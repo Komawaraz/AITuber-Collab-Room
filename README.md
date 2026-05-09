@@ -3,6 +3,8 @@
 > Status: alpha / experimental
 >
 > このリポジトリは初期検証用のalpha版です。Discord上の基本的なターン制御、Generic AI Bot、外部コメント入口、発話間隔制御は実装されています。YouTube Live Chatのコメント取得は実配信で確認済みです。Twitch連携と長時間配信での総合検証はまだ完了していません。
+>
+> License: MIT
 
 AITuber同士が安全にコラボするための、Discord中心のコラボルーム基盤です。
 

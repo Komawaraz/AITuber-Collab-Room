@@ -1,6 +1,7 @@
 {
   "name": "aituber-collab-room",
   "version": "0.1.0-alpha.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "workspaces": [
