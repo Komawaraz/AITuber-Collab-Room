@@ -208,6 +208,47 @@ cp .env.example .env
 `.env`は`.gitignore`で除外されています。通常の`git add`ではGitHubに送られません。
 ただし、`.env.example`、README、コード中に実TokenやAPIキーを書かないでください。
 
+### 各ID/値の参照方法
+
+DiscordのIDをコピーするには、DiscordクライアントでDeveloper Modeを有効にします。
+
+```text
+User Settings
+  -> Advanced
+  -> Developer Mode = ON
+```
+
+その後、対象を右クリックして`Copy ID`します。
+
+| `.env`項目 | 参照場所 | 取得方法 |
+| --- | --- | --- |
+| `DISCORD_TOKEN` | Discord Developer Portal -> 対象Application -> Bot | `Reset Token`または`Token`表示から取得します。外部共有禁止です。 |
+| `DISCORD_GUILD_ID` | Discordサーバー | サーバー名を右クリックして`Copy Server ID`します。 |
+| `COLLAB_ROOM_CHANNEL_ID` | `#collab-room` | チャンネルを右クリックして`Copy Channel ID`します。 |
+| `CONTROL_CHANNEL_ID` | `#collab-control` | チャンネルを右クリックして`Copy Channel ID`します。 |
+| `LOG_CHANNEL_ID` | `#collab-logs` | チャンネルを右クリックして`Copy Channel ID`します。 |
+| `HOST_USER_IDS` | 主催者のDiscordユーザー | ユーザーを右クリックして`Copy User ID`します。複数人はカンマ区切りです。 |
+| `CO_HOST_USER_IDS` | 共同主催者のDiscordユーザー | ユーザーを右クリックして`Copy User ID`します。複数人はカンマ区切りです。 |
+| `AI_PARTICIPANTS[].botId` | 参加AI BotのDiscordユーザー | サーバー内のBotユーザーを右クリックして`Copy User ID`します。Application IDではなくBotのUser IDを使います。 |
+| `GENERIC_AI_DISCORD_TOKEN` | 参加AI BotのDiscord Developer Portal -> Bot | 参加AI Bot側のTokenです。Hostに渡さず、参加者側の`.env`に入れます。 |
+| `GENERIC_AI_ID` | Hostと参加者で決める内部ID | `AI_PARTICIPANTS[].aiId`と同じ文字列にします。Discord表示名ではありません。 |
+| `GENERIC_AI_OPENAI_BASE_URL` | 参加AI側のAPI提供元 | OpenAI互換APIのBase URLです。例: `http://127.0.0.1:8000/v1` |
+| `GENERIC_AI_OPENAI_API_KEY` | 参加AI側のAPI提供元 | OpenAI互換APIのAPIキーです。Hostに渡さず、参加者側の`.env`に入れます。 |
+| `GENERIC_AI_WEBHOOK_URL` | 参加AI側が用意したWebhook | 参加者が公開またはローカル公開したWebhook URLです。 |
+| `YOUTUBE_API_KEY` | Google Cloud Console -> APIとサービス -> 認証情報 | YouTube Data API v3を有効化したプロジェクトのAPIキーです。 |
+| `YOUTUBE_VIDEO_URL` | YouTube配信ページ | 配信ページのURLをコピーします。例: `https://youtube.com/live/<video id>` |
+| `YOUTUBE_VIDEO_ID` | YouTube配信URL | `watch?v=`以降、または`/live/`以降の11文字IDです。通常は`YOUTUBE_VIDEO_URL`で十分です。 |
+| `TWITCH_CHANNEL` | TwitchチャンネルURL | `https://www.twitch.tv/<channel>`の`<channel>`部分です。 |
+| `TWITCH_BOT_USERNAME` | Twitch Botアカウント | Twitchチャットへ接続するBotアカウント名です。 |
+| `TWITCH_OAUTH_TOKEN` | Twitch OAuth Token発行元 | `oauth:`付き、またはToken本体を指定します。外部共有禁止です。 |
+
+注意:
+
+- Discord Developer Portalの`Application ID`と、Discord上の`Bot User ID`は別物です
+- `AI_PARTICIPANTS[].botId`には、参加AI Botの`Bot User ID`を使います
+- Token、APIキー、OAuth TokenはHostにも参加者にも不用意に共有しません
+- Hostに共有するのは、原則として公開プロフィールとBot User IDだけです
+
 ### 司会Bot用
 
 ```env
