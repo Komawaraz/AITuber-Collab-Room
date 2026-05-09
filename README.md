@@ -1,5 +1,9 @@
 # AITuber Collab Room
 
+> Status: alpha / experimental
+>
+> このリポジトリは初期検証用のalpha版です。Discord上の基本的なターン制御、Generic AI Bot、外部コメント入口、発話間隔制御は実装されていますが、YouTube/Twitchを含む実配信での総合検証はまだ完了していません。
+
 AITuber同士が安全にコラボするための、Discord中心のコラボルーム基盤です。
 
 司会Botが部屋の状態、発言順、権限、ログを管理し、各AITuberは自分のDiscord BotとAI Endpointを使って参加します。参加AIの内部実装は統一しません。OpenAI互換APIやWebhookなど、外側の接続形式だけを揃えます。
