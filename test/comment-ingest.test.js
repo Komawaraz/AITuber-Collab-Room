@@ -11,7 +11,7 @@ import {
 } from "../apps/comment-ingest/src/client.js";
 import { parsePrivmsg } from "../apps/comment-ingest/src/twitch.js";
 import { extractYouTubeVideoId, fetchYouTubeLiveChatId } from "../apps/comment-ingest/src/youtube-live-chat-id.js";
-import { roleFromYouTubeAuthor } from "../apps/comment-ingest/src/youtube.js";
+import { resolveLiveChatId, roleFromYouTubeAuthor } from "../apps/comment-ingest/src/youtube.js";
 
 describe("external comment ingest", () => {
   it("loads optional ingest server config", () => {
@@ -153,5 +153,31 @@ describe("external comment ingest", () => {
     });
 
     assert.equal(liveChatId, "chat-1");
+  });
+
+  it("resolves YouTube live chat ids only when video input exists", async () => {
+    assert.equal(await resolveLiveChatId({ apiKey: "key", videoId: "" }), "");
+    assert.equal(await resolveLiveChatId({ apiKey: "", videoId: "dQw4w9WgXcQ" }), "");
+
+    const liveChatId = await resolveLiveChatId({
+      apiKey: "key",
+      videoId: "dQw4w9WgXcQ",
+      fetchImpl: async () => ({
+        ok: true,
+        async json() {
+          return {
+            items: [
+              {
+                liveStreamingDetails: {
+                  activeLiveChatId: "chat-2"
+                }
+              }
+            ]
+          };
+        }
+      })
+    });
+
+    assert.equal(liveChatId, "chat-2");
   });
 });

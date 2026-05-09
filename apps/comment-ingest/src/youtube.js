@@ -6,13 +6,16 @@ import {
   loadCommentIngestClientConfig,
   postAudienceComment
 } from "./client.js";
+import { extractYouTubeVideoId, fetchYouTubeLiveChatId } from "./youtube-live-chat-id.js";
 
 if (isMainModule()) {
   loadEnvFile();
+  const apiKey = process.env.YOUTUBE_API_KEY || "";
+  const videoId = extractYouTubeVideoId(process.env.YOUTUBE_VIDEO_ID || process.env.YOUTUBE_VIDEO_URL || "");
   const config = {
     ...loadCommentIngestClientConfig(),
-    apiKey: process.env.YOUTUBE_API_KEY || "",
-    liveChatId: process.env.YOUTUBE_LIVE_CHAT_ID || "",
+    apiKey,
+    liveChatId: process.env.YOUTUBE_LIVE_CHAT_ID || await resolveLiveChatId({ apiKey, videoId }),
     roleDetectionEnabled: envFlag(process.env.YOUTUBE_COMMENT_ROLE_DETECTION, true),
     once: process.argv.includes("--once")
   };
@@ -22,6 +25,13 @@ if (isMainModule()) {
   }
 
   await watchYouTubeLiveChat(config);
+}
+
+export async function resolveLiveChatId({ apiKey, videoId, fetchImpl = fetch }) {
+  if (!apiKey || !videoId) {
+    return "";
+  }
+  return fetchYouTubeLiveChatId({ apiKey, videoId, fetchImpl });
 }
 
 export async function watchYouTubeLiveChat({
