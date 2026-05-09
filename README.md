@@ -64,20 +64,49 @@ test/
 
 - Node.js 22以上
 - npm
+- Git
 - Discord Developer Portalで作成したBot
 - AI Endpoint
 
-依存関係のインストール:
+## セットアップ
+
+### 1. リポジトリをコピーする
+
+GitHubから作業PCまたはサーバーへリポジトリをcloneします。
+
+```sh
+git clone https://github.com/Komawaraz/AITuber-Collab-Room.git
+cd AITuber-Collab-Room
+```
+
+SSHを使う場合:
+
+```sh
+git clone git@github.com:Komawaraz/AITuber-Collab-Room.git
+cd AITuber-Collab-Room
+```
+
+すでにclone済みで最新版に更新する場合:
+
+```sh
+git pull
+```
+
+### 2. 依存関係をインストールする
 
 ```sh
 npm install
 ```
 
-テスト:
+### 3. テストする
 
 ```sh
 npm test
 ```
+
+### 4. 設定ファイルを作る
+
+`.env`をリポジトリ直下に作成し、Discord Bot Token、チャンネルID、AI参加者設定などを入れます。詳しい項目は後述の`.env`設定例を参照してください。
 
 ## Discord側の準備
 
