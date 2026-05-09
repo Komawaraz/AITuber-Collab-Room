@@ -242,6 +242,9 @@ export function handleRoomMessage({ state, message }) {
   if (tag?.type === TagType.reply) {
     return handleAiReply({ state, participant, message });
   }
+  if (isSpeechTag(tag)) {
+    return handleSpeechEvent({ state, participant, tag });
+  }
 
   const currentCount = state.offTurnViolations.get(participant.aiId) ?? 0;
   const result = processOffTurnSpeech({
@@ -358,7 +361,14 @@ function handleAiReply({ state, participant, message }) {
       controlMessages: [`Reply accepted from ${participant.aiId} for turn ${turnId}.`],
       logMessages: [`TURN_REPLIED turn=${turnId} ai=${participant.aiId} message=${message.id}`]
     };
-    return maybeContinueLoop({ state, previousParticipant: participant, previousMessageText: message.content, result });
+    const replyTag = parseCollabTag(message.content);
+    return maybeContinueLoop({
+      state,
+      previousParticipant: participant,
+      previousMessageText: message.content,
+      previousTurnId: replyTag?.attrs.turn || String(turnId),
+      result
+    });
   }
 
   const messages = inspection.events.map(
@@ -428,7 +438,65 @@ function handleLoopCommand({ state, args }) {
   });
 }
 
-function maybeContinueLoop({ state, previousParticipant, previousMessageText, result }) {
+function handleSpeechEvent({ state, participant, tag }) {
+  const turnId = tag.attrs.turn;
+  const pendingSpeech = state.autoLoop?.pendingSpeech;
+  const lineBase = `ai=${participant.aiId} turn=${turnId || "unknown"}`;
+
+  if (tag.type === TagType.speechStarted) {
+    if (pendingSpeech && pendingSpeech.aiId === participant.aiId && String(pendingSpeech.turnId) === String(turnId)) {
+      pendingSpeech.startedAt = new Date().toISOString();
+    }
+    return {
+      kind: "speech_started",
+      controlMessages: [`Speech started: ${lineBase}`],
+      logMessages: [`SPEECH_STARTED ${lineBase}`]
+    };
+  }
+
+  if (!pendingSpeech || pendingSpeech.aiId !== participant.aiId || String(pendingSpeech.turnId) !== String(turnId)) {
+    return {
+      kind: "speech_ignored",
+      controlMessages: [`Speech event ignored: no matching pending speech. ${lineBase}`],
+      logMessages: [`SPEECH_IGNORED ${lineBase} type=${tag.type}`]
+    };
+  }
+
+  const pendingTurn = pendingSpeech.pendingTurn;
+  delete state.autoLoop.pendingSpeech;
+  delete state.autoLoop.pendingTurn;
+
+  const nextTurn = issueTurn({
+    state,
+    aiId: pendingTurn.aiId,
+    question: pendingTurn.question,
+    reason: `${pendingTurn.reason} after ${tag.type}`
+  });
+
+  if (nextTurn.kind !== "turn") {
+    state.autoLoop = null;
+    return {
+      kind: "control",
+      controlMessages: [...(nextTurn.controlMessages || []), "Auto loop stopped."],
+      logMessages: [...(nextTurn.logMessages || []), `AUTO_LOOP_STOPPED reason=speech_event_issue_failed event=${tag.type}`]
+    };
+  }
+
+  return {
+    ...nextTurn,
+    kind: "auto_loop_turn",
+    controlMessages: [
+      `Speech ${tag.type === TagType.speechFailed ? "failed" : "finished"}: ${lineBase}`,
+      ...(nextTurn.controlMessages || [])
+    ],
+    logMessages: [
+      `SPEECH_${tag.type === TagType.speechFailed ? "FAILED" : "FINISHED"} ${lineBase}`,
+      ...(nextTurn.logMessages || [])
+    ]
+  };
+}
+
+function maybeContinueLoop({ state, previousParticipant, previousMessageText, previousTurnId, result }) {
   if (!state.autoLoop?.enabled) {
     return result;
   }
@@ -457,6 +525,24 @@ function maybeContinueLoop({ state, previousParticipant, previousMessageText, re
 
   const delayMs = estimateSpeechDelayMs(previousMessageText, state.speechPacing);
   if (delayMs > 0) {
+    if (state.speechPacing?.waitForSpeechEvents && state.speechPacing?.turnMode !== "overlap_generation") {
+      pendingTurn.readyAt = new Date(Date.now() + delayMs).toISOString();
+      pendingTurn.delayMs = delayMs;
+      state.autoLoop.pendingTurn = pendingTurn;
+      state.autoLoop.pendingSpeech = {
+        aiId: previousParticipant.aiId,
+        turnId: String(previousTurnId),
+        pendingTurn,
+        fallbackReadyAt: pendingTurn.readyAt,
+        delayMs
+      };
+      result.kind = "auto_loop_wait";
+      result.pendingAutoTurn = { ...pendingTurn };
+      result.controlMessages.push(`Auto loop waiting for speech finish from ${previousParticipant.aiId} turn=${previousTurnId}; fallback ${delayMs}ms.`);
+      result.logMessages.push(`AUTO_LOOP_WAIT_SPEECH ai=${previousParticipant.aiId} turn=${previousTurnId} next=${nextAiId} fallback_delay_ms=${delayMs}`);
+      return result;
+    }
+
     if (state.speechPacing?.turnMode === "overlap_generation") {
       state.autoLoop.speechReadyAt = estimateSpeechQueueReadyAt(state.autoLoop.speechReadyAt, delayMs);
       const nextTurn = issueTurn({ state, ...pendingTurn });
@@ -517,6 +603,9 @@ export function handlePendingAutoTurn({ state, pendingTurnId }) {
     };
   }
 
+  if (state.autoLoop.pendingSpeech?.pendingTurn?.id === pendingTurnId) {
+    delete state.autoLoop.pendingSpeech;
+  }
   delete state.autoLoop.pendingTurn;
   const nextTurn = issueTurn({
     state,
@@ -558,6 +647,12 @@ function estimateSpeechQueueReadyAt(currentReadyAt, delayMs) {
   const currentReadyTime = Date.parse(currentReadyAt || "");
   const startTime = Number.isFinite(currentReadyTime) ? Math.max(now, currentReadyTime) : now;
   return new Date(startTime + delayMs).toISOString();
+}
+
+function isSpeechTag(tag) {
+  return tag?.type === TagType.speechStarted ||
+    tag?.type === TagType.speechFinished ||
+    tag?.type === TagType.speechFailed;
 }
 
 function nextLoopParticipantId(participantIds, currentAiId) {

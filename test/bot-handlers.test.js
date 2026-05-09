@@ -95,6 +95,7 @@ describe("bot role mapping", () => {
     assert.deepEqual(loaded.participants[0].forbiddenTopics, ["private prompt"]);
     assert.equal(loaded.speechPacing.enabled, true);
     assert.equal(loaded.speechPacing.turnMode, "after_speech");
+    assert.equal(loaded.speechPacing.waitForSpeechEvents, false);
     assert.equal(loaded.speechPacing.minDelayMs, 1500);
   });
 
@@ -109,6 +110,19 @@ describe("bot role mapping", () => {
     });
 
     assert.equal(loaded.speechPacing.turnMode, "overlap_generation");
+  });
+
+  it("loads participant speech event waiting mode", () => {
+    const loaded = loadBotConfig({
+      DISCORD_TOKEN: "token",
+      DISCORD_GUILD_ID: "guild",
+      COLLAB_ROOM_CHANNEL_ID: "room-channel",
+      CONTROL_CHANNEL_ID: "control-channel",
+      LOG_CHANNEL_ID: "log-channel",
+      SPEECH_PACING_WAIT_FOR_EVENTS: "1"
+    });
+
+    assert.equal(loaded.speechPacing.waitForSpeechEvents, true);
   });
 
   it("maps configured users to roles", () => {
@@ -380,6 +394,113 @@ describe("bot control commands", () => {
     assert.match(state.autoLoop.speechReadyAt, /\d{4}-\d{2}-\d{2}T/);
     assert.match(accepted.controlMessages.join("\n"), /issued beta immediately/);
     assert.match(accepted.logMessages.join("\n"), /AUTO_LOOP_OVERLAP/);
+  });
+
+  it("waits for participant speech finished events before continuing an auto loop", async () => {
+    const state = createInitialState({
+      ...config,
+      speechPacing: {
+        enabled: true,
+        waitForSpeechEvents: true,
+        minDelayMs: 2000,
+        maxDelayMs: 10000,
+        baseDelayMs: 500,
+        charsPerSecond: 10
+      }
+    });
+    await handleControlCommand({
+      state,
+      config,
+      moderator: ruleModerator,
+      authorId: "host-1",
+      content: "!collab loop start alpha beta 3 初回コラボ"
+    });
+
+    const accepted = handleRoomMessage({
+      state,
+      message: {
+        id: "m-speech-reply-1",
+        authorId: "bot-alpha",
+        authorName: "Alpha",
+        content: "これは音声で流します。\n\n[COLLAB_REPLY room=default session=s1 turn=1 reply_to=turn-msg]"
+      }
+    });
+
+    assert.equal(accepted.kind, "auto_loop_wait");
+    assert.equal(state.activeTurn, null);
+    assert.equal(state.autoLoop.pendingSpeech.aiId, "alpha");
+    assert.equal(state.autoLoop.pendingSpeech.turnId, "1");
+    assert.equal(state.autoLoop.pendingTurn.aiId, "beta");
+    assert.match(accepted.logMessages.join("\n"), /AUTO_LOOP_WAIT_SPEECH/);
+
+    const started = handleRoomMessage({
+      state,
+      message: {
+        id: "m-speech-started-1",
+        authorId: "bot-alpha",
+        authorName: "Alpha",
+        content: "[COLLAB_SPEECH_STARTED room=default session=s1 turn=1 audio_id=a1]"
+      }
+    });
+
+    assert.equal(started.kind, "speech_started");
+    assert.match(state.autoLoop.pendingSpeech.startedAt, /\d{4}-\d{2}-\d{2}T/);
+
+    const finished = handleRoomMessage({
+      state,
+      message: {
+        id: "m-speech-finished-1",
+        authorId: "bot-alpha",
+        authorName: "Alpha",
+        content: "[COLLAB_SPEECH_FINISHED room=default session=s1 turn=1 audio_id=a1]"
+      }
+    });
+
+    assert.equal(finished.kind, "auto_loop_turn");
+    assert.equal(state.activeTurn.aiId, "beta");
+    assert.equal(state.autoLoop.pendingSpeech, undefined);
+    assert.equal(state.autoLoop.pendingTurn, undefined);
+    assert.match(finished.logMessages.join("\n"), /SPEECH_FINISHED/);
+  });
+
+  it("falls back to the estimated speech timer when no speech finished event arrives", async () => {
+    const state = createInitialState({
+      ...config,
+      speechPacing: {
+        enabled: true,
+        waitForSpeechEvents: true,
+        minDelayMs: 2000,
+        maxDelayMs: 10000,
+        baseDelayMs: 500,
+        charsPerSecond: 10
+      }
+    });
+    await handleControlCommand({
+      state,
+      config,
+      moderator: ruleModerator,
+      authorId: "host-1",
+      content: "!collab loop start alpha beta 3 初回コラボ"
+    });
+
+    const accepted = handleRoomMessage({
+      state,
+      message: {
+        id: "m-speech-fallback-1",
+        authorId: "bot-alpha",
+        authorName: "Alpha",
+        content: "これは音声で流します。\n\n[COLLAB_REPLY room=default session=s1 turn=1 reply_to=turn-msg]"
+      }
+    });
+
+    const issued = handlePendingAutoTurn({
+      state,
+      pendingTurnId: accepted.pendingAutoTurn.id
+    });
+
+    assert.equal(issued.kind, "auto_loop_turn");
+    assert.equal(state.activeTurn.aiId, "beta");
+    assert.equal(state.autoLoop.pendingSpeech, undefined);
   });
 
   it("scopes automatic loop context to messages created after the loop starts", async () => {

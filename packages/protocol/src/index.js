@@ -1,8 +1,11 @@
-const TAG_PATTERN = /\[(COLLAB_TURN|COLLAB_REPLY)\s+([^\]]+)\]/;
+const TAG_PATTERN = /\[(COLLAB_TURN|COLLAB_REPLY|COLLAB_SPEECH_STARTED|COLLAB_SPEECH_FINISHED|COLLAB_SPEECH_FAILED)\s+([^\]]+)\]/;
 
 export const TagType = Object.freeze({
   turn: "COLLAB_TURN",
-  reply: "COLLAB_REPLY"
+  reply: "COLLAB_REPLY",
+  speechStarted: "COLLAB_SPEECH_STARTED",
+  speechFinished: "COLLAB_SPEECH_FINISHED",
+  speechFailed: "COLLAB_SPEECH_FAILED"
 });
 
 export function parseCollabTag(text) {
@@ -39,6 +42,10 @@ export function formatCollabTurnTag({ room, session, turn, topic }) {
 
 export function formatCollabReplyTag({ room, session, turn, reply_to }) {
   return formatTag(TagType.reply, { room, session, turn, reply_to });
+}
+
+export function formatCollabSpeechTag({ type, room, session, turn, audio_id, reason }) {
+  return formatTag(type, { room, session, turn, audio_id, reason });
 }
 
 export function isValidTurnForAi({ messageText, mentionedBotId, targetBotId }) {

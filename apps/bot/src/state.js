@@ -83,6 +83,7 @@ function cleanMessageText(text) {
   return String(text || "")
     .replace(/\[COLLAB_REPLY\s+[^\]]+\]/g, "")
     .replace(/\[COLLAB_TURN\s+[^\]]+\]/g, "")
+    .replace(/\[COLLAB_SPEECH_(?:STARTED|FINISHED|FAILED)\s+[^\]]+\]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }

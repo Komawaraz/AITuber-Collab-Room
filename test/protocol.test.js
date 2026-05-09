@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   buildDummyReply,
   formatCollabReplyTag,
+  formatCollabSpeechTag,
   formatCollabTurnTag,
   isValidTurnForAi,
   parseAttrs,
@@ -40,6 +41,22 @@ describe("protocol tags", () => {
       formatCollabReplyTag({ room: "default", session: "s1", turn: 1, reply_to: "m1" }),
       "[COLLAB_REPLY room=default session=s1 turn=1 reply_to=m1]"
     );
+    assert.equal(
+      formatCollabSpeechTag({ type: TagType.speechFinished, room: "default", session: "s1", turn: 1, audio_id: "a1" }),
+      "[COLLAB_SPEECH_FINISHED room=default session=s1 turn=1 audio_id=a1]"
+    );
+  });
+
+  it("parses speech tags", () => {
+    const tag = parseCollabTag("[COLLAB_SPEECH_STARTED room=default session=s1 turn=7 audio_id=a7]");
+
+    assert.equal(tag.type, TagType.speechStarted);
+    assert.deepEqual(tag.attrs, {
+      room: "default",
+      session: "s1",
+      turn: "7",
+      audio_id: "a7"
+    });
   });
 
   it("accepts only mentioned target bots with a valid turn tag", () => {

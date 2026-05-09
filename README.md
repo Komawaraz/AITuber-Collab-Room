@@ -661,6 +661,7 @@ AI AのCOLLAB_REPLY
 ```env
 SPEECH_PACING_ENABLED=1
 SPEECH_PACING_TURN_MODE=after_speech
+SPEECH_PACING_WAIT_FOR_EVENTS=0
 SPEECH_PACING_MIN_DELAY_MS=1500
 SPEECH_PACING_MAX_DELAY_MS=15000
 SPEECH_PACING_BASE_DELAY_MS=700
@@ -673,6 +674,7 @@ SPEECH_PACING_CHARS_PER_SECOND=12
 | --- | --- |
 | `SPEECH_PACING_ENABLED` | `1`で有効、`0`で無効 |
 | `SPEECH_PACING_TURN_MODE` | `after_speech`なら発話推定終了後に次ターン、`overlap_generation`なら発話中に次AIの思考を開始 |
+| `SPEECH_PACING_WAIT_FOR_EVENTS` | `1`なら参加AI側の`COLLAB_SPEECH_FINISHED`を待ち、来ない場合は推定時間でfallback |
 | `SPEECH_PACING_MIN_DELAY_MS` | どれだけ短い返答でも最低限待つ時間 |
 | `SPEECH_PACING_MAX_DELAY_MS` | 長文でも最大で待つ時間 |
 | `SPEECH_PACING_BASE_DELAY_MS` | TTS開始や配信反映の余白 |
@@ -683,10 +685,13 @@ SPEECH_PACING_CHARS_PER_SECOND=12
 ```env
 # 音声被りを最も避けたい場合
 SPEECH_PACING_TURN_MODE=after_speech
+SPEECH_PACING_WAIT_FOR_EVENTS=1
 
 # 遅いモデルで無音を減らしたい場合
 SPEECH_PACING_TURN_MODE=overlap_generation
 ```
+
+参加AI側で自分のTTSや音声再生を管理する場合は、`SPEECH_PACING_WAIT_FOR_EVENTS=1`を使います。この場合、司会Botは音声そのものを扱わず、参加AI Botからの再生状態イベントだけを見ます。
 
 待機中に手動で`!collab turn`や`!collab next`を実行すると、発話被り防止のため拒否されます。割り込む場合は先に以下で自動ループを止めます。
 
@@ -716,6 +721,28 @@ Question: 今の部屋の状態を短く観測してください。
 ```
 
 `apps/generic-ai-bot`はこの処理を自動で行います。
+
+参加AI側でTTSを再生する場合、参加AI Botは必要に応じて以下の音声イベントを投稿できます。
+
+```text
+[COLLAB_SPEECH_STARTED room=default session=s1 turn=1 audio_id=<任意ID>]
+[COLLAB_SPEECH_FINISHED room=default session=s1 turn=1 audio_id=<任意ID>]
+[COLLAB_SPEECH_FAILED room=default session=s1 turn=1 audio_id=<任意ID> reason=<短い理由>]
+```
+
+`SPEECH_PACING_WAIT_FOR_EVENTS=1`の場合、司会Botは`COLLAB_REPLY`受理後、同じ参加AI Botから同じ`turn`の`COLLAB_SPEECH_FINISHED`または`COLLAB_SPEECH_FAILED`が来るまで次ターンを待ちます。イベントが来ない場合は、推定発話時間でfallbackして次ターンへ進みます。
+
+この方式では、配信に音声を乗せる経路はCollab Room外で用意します。
+
+例:
+
+- Discordボイスチャンネル
+- VDO.Ninja
+- OBS NDI
+- WebRTC
+- RTMP/SRT
+
+Collab Roomは、誰が話す番か、発話が開始/終了したか、次ターンへ進むかだけを管理します。
 
 ## Generic AI Bot
 
@@ -881,16 +908,16 @@ COLLAB_DB_PATH=data/collab-room.sqlite
 - 失敗イベントのリトライ方針
 - 再起動時にどのイベントを再実行するか
 
-### 2. TTS/音声再生キューとの接続
+### 2. 参加者側音声再生イベントとの接続
 
-現在の発話被り防止は、返信文字数から推定発話時間を計算しています。実配信ではTTS側の再生完了イベントと接続できると、より正確に次ターンを制御できます。
+現在の発話被り防止は、返信文字数から推定発話時間を計算できます。参加者側が自分のTTSや音声再生を管理する場合は、`COLLAB_SPEECH_STARTED` / `COLLAB_SPEECH_FINISHED` / `COLLAB_SPEECH_FAILED`を使って、より正確に次ターンを制御できます。
 
 検討点:
 
-- TTSへ送った音声ジョブIDの保存
-- 再生開始/完了イベントの受信
+- 参加者側TTSの再生開始/完了イベントの受信
 - `after_speech`と`overlap_generation`の実測調整
 - 配信上の無音時間と発話被りのログ化
+- Discord VC / WebRTC / VDO.Ninja等、音声をHost配信へ渡す経路
 
 ### 3. YouTube/Twitchコメントの整流
 

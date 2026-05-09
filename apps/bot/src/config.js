@@ -49,6 +49,7 @@ export function loadBotConfig(env = process.env) {
     speechPacing: {
       enabled: env.SPEECH_PACING_ENABLED !== "0",
       turnMode: parseSpeechPacingTurnMode(env.SPEECH_PACING_TURN_MODE),
+      waitForSpeechEvents: env.SPEECH_PACING_WAIT_FOR_EVENTS === "1",
       minDelayMs: parsePositiveInt(env.SPEECH_PACING_MIN_DELAY_MS, 1_500),
       maxDelayMs: parsePositiveInt(env.SPEECH_PACING_MAX_DELAY_MS, 15_000),
       baseDelayMs: parseNonNegativeInt(env.SPEECH_PACING_BASE_DELAY_MS, 700),
