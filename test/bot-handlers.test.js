@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import { loadBotConfig } from "../apps/bot/src/config.js";
 import { loadEnvFile } from "../apps/bot/src/env-file.js";
-import { handleControlCommand, handleRoomMessage, handleTurnTimeout, roleForUser } from "../apps/bot/src/handlers.js";
+import {
+  handleControlCommand,
+  handlePendingAutoTurn,
+  handleRoomMessage,
+  handleTurnTimeout,
+  roleForUser
+} from "../apps/bot/src/handlers.js";
 import { createRuleModerator } from "../apps/bot/src/moderator.js";
 import { createInitialState } from "../apps/bot/src/state.js";
 import { Role } from "../packages/core/src/index.js";
@@ -87,6 +93,8 @@ describe("bot role mapping", () => {
     assert.deepEqual(loaded.hostUserIds, ["host-1", "host-2"]);
     assert.equal(loaded.participants[0].botId, "bot-alpha");
     assert.deepEqual(loaded.participants[0].forbiddenTopics, ["private prompt"]);
+    assert.equal(loaded.speechPacing.enabled, true);
+    assert.equal(loaded.speechPacing.minDelayMs, 1500);
   });
 
   it("maps configured users to roles", () => {
@@ -255,6 +263,71 @@ describe("bot control commands", () => {
     assert.equal(state.activeTurn.aiId, "beta");
     assert.equal(state.autoLoop.remainingTurns, 2);
     assert.match(continued.roomMessage, /<@bot-beta>/);
+  });
+
+  it("waits for estimated speech duration before issuing the next loop turn", async () => {
+    const state = createInitialState({
+      ...config,
+      speechPacing: {
+        enabled: true,
+        minDelayMs: 2000,
+        maxDelayMs: 10000,
+        baseDelayMs: 500,
+        charsPerSecond: 10
+      }
+    });
+    await handleControlCommand({
+      state,
+      config,
+      moderator: ruleModerator,
+      authorId: "host-1",
+      content: "!collab loop start alpha beta 3 初回コラボ"
+    });
+
+    const accepted = handleRoomMessage({
+      state,
+      message: {
+        id: "m-paced-1",
+        authorId: "bot-alpha",
+        authorName: "Alpha",
+        content: "これは少し長めの返答です。\n\n[COLLAB_REPLY room=default session=s1 turn=1 reply_to=turn-msg]"
+      }
+    });
+
+    assert.equal(accepted.kind, "auto_loop_wait");
+    assert.equal(state.activeTurn, null);
+    assert.equal(state.autoLoop.pendingTurn.aiId, "beta");
+    assert.equal(accepted.pendingAutoTurn.aiId, "beta");
+    assert.equal(accepted.pendingAutoTurn.delayMs >= 2000, true);
+    assert.equal(accepted.roomMessage, undefined);
+
+    const status = await handleControlCommand({
+      state,
+      config,
+      moderator: ruleModerator,
+      authorId: "host-1",
+      content: "!collab loop status"
+    });
+    assert.match(status.controlMessages[0], /Auto loop waiting/);
+    assert.match(status.controlMessages[0], /next=beta/);
+
+    const blocked = await handleControlCommand({
+      state,
+      config,
+      moderator: ruleModerator,
+      authorId: "host-1",
+      content: "!collab turn alpha interrupt"
+    });
+    assert.match(blocked.controlMessages[0], /speech pacing wait/);
+
+    const issued = handlePendingAutoTurn({
+      state,
+      pendingTurnId: accepted.pendingAutoTurn.id
+    });
+    assert.equal(issued.kind, "auto_loop_turn");
+    assert.equal(state.activeTurn.aiId, "beta");
+    assert.match(issued.roomMessage, /<@bot-beta>/);
+    assert.equal(state.autoLoop.pendingTurn, undefined);
   });
 
   it("scopes automatic loop context to messages created after the loop starts", async () => {

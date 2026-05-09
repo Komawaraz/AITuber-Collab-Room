@@ -18,6 +18,7 @@ export function createInitialState(config, snapshot = null) {
     recentTurns: [],
     offTurnViolations: new Map(),
     autoLoop: null,
+    speechPacing: config.speechPacing || { enabled: false },
     paused: false
   };
 }
@@ -35,6 +36,7 @@ export function restoreStateSnapshot(config, snapshot) {
     recentTurns: Array.isArray(snapshot.recentTurns) ? snapshot.recentTurns.slice(-50) : [],
     offTurnViolations: new Map(snapshot.offTurnViolations || []),
     autoLoop: snapshot.autoLoop || null,
+    speechPacing: config.speechPacing || snapshot.speechPacing || { enabled: false },
     paused: Boolean(snapshot.paused)
   };
 }

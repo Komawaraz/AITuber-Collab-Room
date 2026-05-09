@@ -7,6 +7,7 @@ import { createModerator } from "./moderator.js";
 import { loadEnvFile } from "./env-file.js";
 import {
   handleControlCommand,
+  handlePendingAutoTurn,
   handleRoomMessage,
   handleTurnTimeout,
   injectAudienceCommentFromSource
@@ -31,11 +32,13 @@ const client = new Client({
 });
 
 const timeoutHandles = new Map();
+const pendingAutoTurnHandles = new Map();
 
 client.once("clientReady", () => {
   console.log(`AITuber Collab Room bot logged in as ${client.user.tag}`);
   void checkConfiguredChannels();
   startCommentIngestServer();
+  resumePendingAutoTurn();
   store.appendEvent({
     sessionId: state.session.sessionId,
     type: "BOT_READY",
@@ -156,6 +159,9 @@ async function publishResult(result) {
   if (result.kind === "retry" && state.activeTurn) {
     scheduleTurnTimeout(state.activeTurn.turnId, 30_000);
   }
+  if (result.kind === "auto_loop_wait" && result.pendingAutoTurn) {
+    schedulePendingAutoTurn(result.pendingAutoTurn.id, result.pendingAutoTurn.delayMs || 1_000);
+  }
 
   persistResult(result);
 }
@@ -196,6 +202,34 @@ function scheduleTurnTimeout(turnId, timeoutMs) {
   }, timeoutMs);
 
   timeoutHandles.set(turnId, handle);
+}
+
+function schedulePendingAutoTurn(pendingTurnId, delayMs) {
+  const existing = pendingAutoTurnHandles.get(pendingTurnId);
+  if (existing) {
+    clearTimeout(existing);
+  }
+
+  const handle = setTimeout(async () => {
+    pendingAutoTurnHandles.delete(pendingTurnId);
+    const result = handlePendingAutoTurn({ state, pendingTurnId });
+    await publishResult(result);
+  }, Math.max(0, delayMs));
+
+  pendingAutoTurnHandles.set(pendingTurnId, handle);
+}
+
+function resumePendingAutoTurn() {
+  const pendingTurn = state.autoLoop?.pendingTurn;
+  if (!pendingTurn) {
+    return;
+  }
+  const readyAt = Date.parse(pendingTurn.readyAt || "");
+  const delayMs = Number.isFinite(readyAt)
+    ? Math.max(0, readyAt - Date.now())
+    : pendingTurn.delayMs || 1_000;
+  console.log(`[bot:auto-loop] resuming pending turn ai=${pendingTurn.aiId} delay_ms=${delayMs}`);
+  schedulePendingAutoTurn(pendingTurn.id, delayMs);
 }
 
 function persistResult(result) {

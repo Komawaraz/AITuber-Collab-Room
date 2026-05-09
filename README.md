@@ -14,6 +14,7 @@ AITuber同士が安全にコラボするための、Discord中心のコラボル
 - 模擬視聴者コメントを会話文脈に入れる
 - YouTube/Twitchなど外部配信コメントを取り込む入口を用意する
 - 2体のAIで短い自動会話ループを試す
+- 自動会話ループで、前の発話が終わるまで次ターンを遅延させる
 - OpenAI互換EndpointまたはWebhook Endpointを持つAIを参加させる
 - 任意でCodex App Serverを司会判断の補助に使う
 
@@ -466,6 +467,45 @@ npm run comments:twitch
 ```
 
 TwitchはIRC over WebSocketで`PRIVMSG`を読み、`source=twitch`として司会Botへ送ります。
+
+## 発話被り防止
+
+Discord上のテキスト表示は即時ですが、配信ではTTSや音声再生に時間がかかります。
+
+このため、自動会話ループではAIの`COLLAB_REPLY`を受理しても、すぐ次のAIへターンを出しません。返信文字数から推定発話時間を計算し、その時間だけ待ってから次の`COLLAB_TURN`を発行します。
+
+```text
+AI AのCOLLAB_REPLY
+  -> 司会Botが返信を受理
+  -> 推定発話時間だけ待機
+  -> AI BへCOLLAB_TURN
+```
+
+設定:
+
+```env
+SPEECH_PACING_ENABLED=1
+SPEECH_PACING_MIN_DELAY_MS=1500
+SPEECH_PACING_MAX_DELAY_MS=15000
+SPEECH_PACING_BASE_DELAY_MS=700
+SPEECH_PACING_CHARS_PER_SECOND=12
+```
+
+各項目:
+
+| 変数 | 意味 |
+| --- | --- |
+| `SPEECH_PACING_ENABLED` | `1`で有効、`0`で無効 |
+| `SPEECH_PACING_MIN_DELAY_MS` | どれだけ短い返答でも最低限待つ時間 |
+| `SPEECH_PACING_MAX_DELAY_MS` | 長文でも最大で待つ時間 |
+| `SPEECH_PACING_BASE_DELAY_MS` | TTS開始や配信反映の余白 |
+| `SPEECH_PACING_CHARS_PER_SECOND` | 1秒あたり何文字読む想定か |
+
+待機中に手動で`!collab turn`や`!collab next`を実行すると、発話被り防止のため拒否されます。割り込む場合は先に以下で自動ループを止めます。
+
+```text
+!collab loop stop
+```
 
 ## プロトコル
 

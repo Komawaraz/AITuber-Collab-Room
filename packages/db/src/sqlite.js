@@ -125,6 +125,7 @@ export function serializeState(state) {
     recentTurns: state.recentTurns,
     offTurnViolations: Array.from(state.offTurnViolations.entries()),
     autoLoop: state.autoLoop,
+    speechPacing: state.speechPacing,
     paused: state.paused
   };
 }

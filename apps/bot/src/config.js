@@ -45,6 +45,13 @@ export function loadBotConfig(env = process.env) {
       host: env.COMMENT_INGEST_HOST || "127.0.0.1",
       port: parsePositiveInt(env.COMMENT_INGEST_PORT, 39210),
       token: env.COMMENT_INGEST_TOKEN || ""
+    },
+    speechPacing: {
+      enabled: env.SPEECH_PACING_ENABLED !== "0",
+      minDelayMs: parsePositiveInt(env.SPEECH_PACING_MIN_DELAY_MS, 1_500),
+      maxDelayMs: parsePositiveInt(env.SPEECH_PACING_MAX_DELAY_MS, 15_000),
+      baseDelayMs: parseNonNegativeInt(env.SPEECH_PACING_BASE_DELAY_MS, 700),
+      charsPerSecond: parsePositiveNumber(env.SPEECH_PACING_CHARS_PER_SECOND, 12)
     }
   };
 }
@@ -84,4 +91,14 @@ function parseParticipants(value) {
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseNonNegativeInt(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function parsePositiveNumber(value, fallback) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }

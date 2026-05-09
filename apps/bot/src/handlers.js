@@ -42,6 +42,9 @@ export async function handleControlCommand({ state, config, moderator, authorId,
     if (!can(role, "FORCE_TURN")) {
       return controlResult("Permission denied: FORCE_TURN");
     }
+    if (state.autoLoop?.pendingTurn) {
+      return controlResult(`Cannot issue manual turn while speech pacing wait is active for ${state.autoLoop.pendingTurn.aiId}. Use !collab loop stop first.`);
+    }
     const aiId = args.shift();
     const question = args.join(" ").trim() || "Please respond to the current topic.";
     return issueTurn({ state, aiId, question, reason: "manual command" });
@@ -50,6 +53,9 @@ export async function handleControlCommand({ state, config, moderator, authorId,
   if (command === "next") {
     if (!can(role, "FORCE_TURN")) {
       return controlResult("Permission denied: FORCE_TURN");
+    }
+    if (state.autoLoop?.pendingTurn) {
+      return controlResult(`Cannot issue next turn while speech pacing wait is active for ${state.autoLoop.pendingTurn.aiId}. Use !collab loop stop first.`);
     }
     const question = args.join(" ").trim() || "Please respond to the current topic.";
     const selected = selectNextSpeaker({
@@ -65,6 +71,9 @@ export async function handleControlCommand({ state, config, moderator, authorId,
   if (command === "suggest" || command === "proceed") {
     if (!can(role, "FORCE_TURN")) {
       return controlResult("Permission denied: FORCE_TURN");
+    }
+    if (command === "proceed" && state.autoLoop?.pendingTurn) {
+      return controlResult(`Cannot proceed while speech pacing wait is active for ${state.autoLoop.pendingTurn.aiId}. Use !collab loop stop first.`);
     }
     const instruction = args.join(" ").trim() || "Proceed naturally.";
     const decision = await moderator.decide({ state, instruction });
@@ -336,7 +345,7 @@ function handleAiReply({ state, participant, message }) {
       controlMessages: [`Reply accepted from ${participant.aiId} for turn ${turnId}.`],
       logMessages: [`TURN_REPLIED turn=${turnId} ai=${participant.aiId} message=${message.id}`]
     };
-    return maybeContinueLoop({ state, previousParticipant: participant, result });
+    return maybeContinueLoop({ state, previousParticipant: participant, previousMessageText: message.content, result });
   }
 
   const messages = inspection.events.map(
@@ -355,6 +364,11 @@ function handleLoopCommand({ state, args }) {
     if (!state.autoLoop?.enabled) {
       return controlResult("Auto loop is stopped.");
     }
+    if (state.autoLoop.pendingTurn) {
+      return controlResult(
+        `Auto loop waiting: next=${state.autoLoop.pendingTurn.aiId} remaining=${state.autoLoop.remainingTurns} readyAt=${state.autoLoop.pendingTurn.readyAt || "unknown"} topic=${state.autoLoop.topic}`
+      );
+    }
     return controlResult(
       `Auto loop active: participants=${state.autoLoop.participantIds.join(",")} remaining=${state.autoLoop.remainingTurns} topic=${state.autoLoop.topic}`
     );
@@ -371,6 +385,9 @@ function handleLoopCommand({ state, args }) {
 
   if (state.activeTurn) {
     return controlResult(`Cannot start auto loop while turn ${state.activeTurn.turnId} is active.`);
+  }
+  if (state.autoLoop?.pendingTurn) {
+    return controlResult(`Cannot start auto loop while speech pacing wait is active for ${state.autoLoop.pendingTurn.aiId}.`);
   }
 
   const firstAiId = args.shift();
@@ -398,7 +415,7 @@ function handleLoopCommand({ state, args }) {
   });
 }
 
-function maybeContinueLoop({ state, previousParticipant, result }) {
+function maybeContinueLoop({ state, previousParticipant, previousMessageText, result }) {
   if (!state.autoLoop?.enabled) {
     return result;
   }
@@ -418,12 +435,26 @@ function maybeContinueLoop({ state, previousParticipant, result }) {
   }
 
   state.autoLoop.remainingTurns -= 1;
-  const nextTurn = issueTurn({
-    state,
+  const pendingTurn = {
+    id: `auto-${Date.now()}-${state.autoLoop.remainingTurns}-${nextAiId}`,
     aiId: nextAiId,
     question: buildLoopQuestion({ aiId: nextAiId, topic: state.autoLoop.topic, isFirst: false }),
     reason: `auto loop remaining=${state.autoLoop.remainingTurns}`
-  });
+  };
+
+  const delayMs = estimateSpeechDelayMs(previousMessageText, state.speechPacing);
+  if (delayMs > 0) {
+    pendingTurn.readyAt = new Date(Date.now() + delayMs).toISOString();
+    pendingTurn.delayMs = delayMs;
+    state.autoLoop.pendingTurn = pendingTurn;
+    result.kind = "auto_loop_wait";
+    result.pendingAutoTurn = { ...pendingTurn };
+    result.controlMessages.push(`Auto loop waiting ${delayMs}ms before turn to ${nextAiId}.`);
+    result.logMessages.push(`AUTO_LOOP_WAIT next=${nextAiId} delay_ms=${delayMs}`);
+    return result;
+  }
+
+  const nextTurn = issueTurn({ state, ...pendingTurn });
 
   if (nextTurn.kind !== "turn") {
     state.autoLoop = null;
@@ -437,6 +468,56 @@ function maybeContinueLoop({ state, previousParticipant, result }) {
   result.controlMessages.push(...nextTurn.controlMessages);
   result.logMessages.push(...nextTurn.logMessages);
   return result;
+}
+
+export function handlePendingAutoTurn({ state, pendingTurnId }) {
+  const pendingTurn = state.autoLoop?.pendingTurn;
+  if (!pendingTurn || pendingTurn.id !== pendingTurnId) {
+    return null;
+  }
+  if (state.activeTurn) {
+    return {
+      kind: "auto_loop_wait",
+      controlMessages: [`Auto loop still waiting: active turn ${state.activeTurn.turnId} exists.`],
+      logMessages: [`AUTO_LOOP_WAIT_STILL_ACTIVE turn=${state.activeTurn.turnId}`],
+      pendingAutoTurn: { ...pendingTurn, delayMs: 1_000 }
+    };
+  }
+
+  delete state.autoLoop.pendingTurn;
+  const nextTurn = issueTurn({
+    state,
+    aiId: pendingTurn.aiId,
+    question: pendingTurn.question,
+    reason: pendingTurn.reason
+  });
+
+  if (nextTurn.kind !== "turn") {
+    state.autoLoop = null;
+    return {
+      kind: "control",
+      controlMessages: [...(nextTurn.controlMessages || []), "Auto loop stopped."],
+      logMessages: [...(nextTurn.logMessages || []), "AUTO_LOOP_STOPPED reason=pending_issue_failed"]
+    };
+  }
+
+  return {
+    ...nextTurn,
+    kind: "auto_loop_turn"
+  };
+}
+
+function estimateSpeechDelayMs(text, pacing = {}) {
+  if (!pacing.enabled) {
+    return 0;
+  }
+  const clean = String(text || "")
+    .replace(/\[COLLAB_REPLY\s+[^\]]+\]/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+  const charCount = Array.from(clean).length;
+  const estimated = Math.ceil((pacing.baseDelayMs || 0) + (charCount / (pacing.charsPerSecond || 12)) * 1000);
+  return Math.max(pacing.minDelayMs || 0, Math.min(pacing.maxDelayMs || estimated, estimated));
 }
 
 function nextLoopParticipantId(participantIds, currentAiId) {
