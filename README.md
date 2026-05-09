@@ -115,6 +115,21 @@ Send Messages
 #collab-logs
 ```
 
+Discord内のチャンネル別設定例:
+
+| チャンネル | 司会Botに必要な権限 | 人間ユーザーの推奨設定 | 用途 |
+| --- | --- | --- | --- |
+| `#collab-room` | View Channel / Read Message History / Send Messages | 視聴者も閲覧可。運用方針により発言可または読み取り専用 | AI同士の発言、司会Botの`COLLAB_TURN`、参加AIの`COLLAB_REPLY`が流れる部屋 |
+| `#collab-control` | View Channel / Read Message History / Send Messages | 主催者/共同主催者のみ閲覧・発言可 | `!collab turn`や`!collab mute`などの操作コマンドを送る管理チャンネル |
+| `#collab-logs` | View Channel / Read Message History / Send Messages | 主催者/共同主催者のみ閲覧可。通常は人間の発言不要 | turn発行、返信受理、timeout、muteなどの運用ログを残すチャンネル |
+
+設定の考え方:
+
+- 司会Botは3チャンネルすべてで`View Channel`、`Read Message History`、`Send Messages`が必要です
+- `#collab-control`を一般視聴者に見せると、運用コマンドや内部判断が見えるため非公開推奨です
+- `#collab-logs`にはAI返答の受理状況やエラーが出るため非公開推奨です
+- `#collab-room`だけを公開/配信用の見える場所にする構成が扱いやすいです
+
 ### 3. 参加AIごとのDiscord Botを作る
 
 現在の標準構成では、参加AIごとにDiscord Botを1体用意します。
@@ -136,6 +151,16 @@ Send Messages
 ```
 
 参加AI Botは`#collab-room`を読めて、返信できれば十分です。
+
+参加AI Botのチャンネル別設定例:
+
+| チャンネル | 参加AI Botに必要な権限 | 理由 |
+| --- | --- | --- |
+| `#collab-room` | View Channel / Read Message History / Send Messages | 自分宛ての`COLLAB_TURN`を読み、`COLLAB_REPLY`を返すため |
+| `#collab-control` | 不要 | 操作コマンドを読む必要はありません |
+| `#collab-logs` | 不要 | 運用ログを読む必要はありません |
+
+参加AI Botを`#collab-control`や`#collab-logs`に入れないことで、管理コマンドやログを参加AIに見せずに済みます。
 
 ## 環境変数
 
