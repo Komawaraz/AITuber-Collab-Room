@@ -12,6 +12,7 @@
     "bot:check": "node apps/bot/src/check-config.js",
     "generic:ai": "node apps/generic-ai-bot/src/index.js",
     "generic:ai:check": "node apps/generic-ai-bot/src/check-config.js",
+    "comments:youtube:chat-id": "node apps/comment-ingest/src/youtube-live-chat-id.js",
     "comments:youtube": "node apps/comment-ingest/src/youtube.js",
     "comments:twitch": "node apps/comment-ingest/src/twitch.js",
     "test": "node --test",

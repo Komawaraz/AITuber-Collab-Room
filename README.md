@@ -468,6 +468,20 @@ npm run comments:youtube -- --once
 
 YouTube側では`liveChatId`が必要です。これは配信のLive Chat API情報から取得します。watcherはYouTube APIの`pollingIntervalMillis`に従って定期取得します。
 
+配信URLまたは動画IDから`liveChatId`を確認するには:
+
+```sh
+npm run comments:youtube:chat-id -- 'https://www.youtube.com/watch?v=<video id>'
+```
+
+出力された値を`.env`へ入れます。
+
+```env
+YOUTUBE_LIVE_CHAT_ID=<出力されたliveChatId>
+```
+
+このコマンドで`No activeLiveChatId found`が出る場合、その動画がライブ配信中ではない、ライブチャットが無効、または配信URL/動画IDが違う可能性があります。
+
 YouTubeのコメントrole:
 
 | YouTube側 | Collab Room側 |

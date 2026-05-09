@@ -10,6 +10,7 @@ import {
   postAudienceComment
 } from "../apps/comment-ingest/src/client.js";
 import { parsePrivmsg } from "../apps/comment-ingest/src/twitch.js";
+import { extractYouTubeVideoId, fetchYouTubeLiveChatId } from "../apps/comment-ingest/src/youtube-live-chat-id.js";
 import { roleFromYouTubeAuthor } from "../apps/comment-ingest/src/youtube.js";
 
 describe("external comment ingest", () => {
@@ -117,5 +118,39 @@ describe("external comment ingest", () => {
     assert.equal(roleFromYouTubeAuthor({ isChatModerator: true }), "moderator");
     assert.equal(roleFromYouTubeAuthor({ isChatSponsor: true }), "member");
     assert.equal(roleFromYouTubeAuthor({}), "viewer");
+  });
+
+  it("extracts YouTube video ids from common inputs", () => {
+    assert.equal(extractYouTubeVideoId("dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+    assert.equal(extractYouTubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+    assert.equal(extractYouTubeVideoId("https://youtu.be/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+    assert.equal(extractYouTubeVideoId("not-a-valid-youtube-video-id"), "");
+  });
+
+  it("fetches active YouTube live chat ids", async () => {
+    const liveChatId = await fetchYouTubeLiveChatId({
+      apiKey: "key",
+      videoId: "dQw4w9WgXcQ",
+      fetchImpl: async (url) => {
+        assert.equal(url.searchParams.get("id"), "dQw4w9WgXcQ");
+        assert.equal(url.searchParams.get("part"), "liveStreamingDetails");
+        return {
+          ok: true,
+          async json() {
+            return {
+              items: [
+                {
+                  liveStreamingDetails: {
+                    activeLiveChatId: "chat-1"
+                  }
+                }
+              ]
+            };
+          }
+        };
+      }
+    });
+
+    assert.equal(liveChatId, "chat-1");
   });
 });
