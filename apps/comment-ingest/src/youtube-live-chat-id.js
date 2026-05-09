@@ -48,6 +48,10 @@ export function extractYouTubeVideoId(input) {
       const id = url.pathname.split("/").filter(Boolean)[0] || "";
       return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : "";
     }
+    if (url.pathname.startsWith("/live/")) {
+      const id = url.pathname.split("/").filter(Boolean)[1] || "";
+      return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : "";
+    }
     const id = url.searchParams.get("v") || "";
     return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : "";
   } catch {

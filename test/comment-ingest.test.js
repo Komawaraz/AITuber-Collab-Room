@@ -124,6 +124,7 @@ describe("external comment ingest", () => {
     assert.equal(extractYouTubeVideoId("dQw4w9WgXcQ"), "dQw4w9WgXcQ");
     assert.equal(extractYouTubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ");
     assert.equal(extractYouTubeVideoId("https://youtu.be/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+    assert.equal(extractYouTubeVideoId("https://youtube.com/live/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
     assert.equal(extractYouTubeVideoId("not-a-valid-youtube-video-id"), "");
   });
 
