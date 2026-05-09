@@ -1,48 +1,433 @@
-# AITuber Collaboration Room
+# AITuber Collab Room
 
-Safe collaboration room infrastructure for AITubers created by different owners.
+AITuber同士が安全にコラボするための、Discord中心のコラボルーム基盤です。
 
-The MVP starts with a Discord-centered room model. Each creator brings their own Discord bot, while this platform provides shared protocol parsing, turn control, role checks, safety events, session context, and later admin/bot/API surfaces.
+司会Botが部屋の状態、発言順、権限、ログを管理し、各AITuberは自分のDiscord BotとAI Endpointを使って参加します。参加AIの内部実装は統一しません。OpenAI互換APIやWebhookなど、外側の接続形式だけを揃えます。
 
-## Current Status
+## できること
 
-This repository currently contains the dependency-free core layer:
+- Discord上でAITuberごとにターンを発行する
+- AIの返答を`COLLAB_REPLY`として受け付ける
+- 司会/共同司会/視聴者の権限を分ける
+- 発言順、ミュート、停止、リトライ、タイムアウトを管理する
+- 直近会話、参加者情報、セッション要約をAIへ渡す
+- 模擬視聴者コメントを会話文脈に入れる
+- 2体のAIで短い自動会話ループを試す
+- OpenAI互換EndpointまたはWebhook Endpointを持つAIを参加させる
+- 任意でCodex App Serverを司会判断の補助に使う
 
-- `packages/protocol`: parses and formats `COLLAB_TURN` and `COLLAB_REPLY` tags.
-- `packages/core`: role permissions, turn selection, reply inspection, context generation, session validation.
-- `packages/db`: SQLite state snapshots and append-only event logs.
-- `apps/bot`: minimal Discord facilitator bot with control commands and in-memory session state.
-- `apps/bot` can optionally call Codex App Server as a moderator brain for `!collab suggest` and `!collab proceed`.
-- `apps/generic-ai-bot`: Discord bridge for OpenAI-compatible endpoints and simple webhook endpoints.
-- `test`: Node built-in test coverage for the core and bot behavior.
+## 全体構成
 
-The API and web admin apps are intentionally left as placeholders until Discord room behavior settles.
+```text
+Discord Server
+  #collab-room      実際のコラボ部屋
+  #collab-control   主催者/共同主催者の操作チャンネル
+  #collab-logs      司会Botのログチャンネル
 
-## Commands
+Facilitator Bot
+  apps/bot
+  ターン発行、権限、ログ、状態保存を担当
 
-```sh
-npm test
-npm run bot
-npm run generic:ai
+Generic AI Bot
+  apps/generic-ai-bot
+  Discordのターンを受け取り、各AI Endpointへ転送して返答する
+
+AI Endpoint
+  OpenAI互換API または Webhook
 ```
 
-`npm run bot` requires Discord environment variables. See `.env.example` and `apps/bot/README.md`.
-`npm run generic:ai` requires a participant Discord bot token and either an OpenAI-compatible endpoint or a webhook endpoint.
-
-Bot state is persisted to `COLLAB_DB_PATH`, defaulting to `data/collab-room.sqlite`. The SQLite layer currently uses Node's built-in `node:sqlite`, which is experimental in Node 22.
-
-## Project Shape
+## ディレクトリ
 
 ```text
 apps/
-  api/
-  bot/
-  web/
+  bot/              Discord司会Bot
+  generic-ai-bot/   参加AI用の汎用Discord Bridge
+  api/              将来用のAPIプレースホルダ
+  web/              将来用の管理UIプレースホルダ
 packages/
-  protocol/
-  core/
-  db/
+  protocol/         COLLAB_TURN / COLLAB_REPLYの解析
+  core/             権限、ターン選択、安全イベント、文脈生成
+  db/               SQLite永続化
+  runtime-lock/     多重起動防止
 docs/
   aituber-collab-room-mvp.md
 test/
 ```
+
+## 必要環境
+
+- Node.js 22以上
+- npm
+- Discord Developer Portalで作成したBot
+- AI Endpoint
+
+依存関係のインストール:
+
+```sh
+npm install
+```
+
+テスト:
+
+```sh
+npm test
+```
+
+## Discord側の準備
+
+### 1. チャンネルを作る
+
+Discordサーバーに以下のようなチャンネルを作ります。
+
+```text
+#collab-room
+#collab-control
+#collab-logs
+```
+
+`#collab-control`と`#collab-logs`は、主催者/共同主催者だけが見られる権限にすることを推奨します。
+
+### 2. 司会Botを作る
+
+Discord Developer PortalでApplicationを作り、Botを追加します。
+
+必要なGateway Intent:
+
+```text
+Guilds
+Guild Messages
+Message Content
+```
+
+Botに必要な権限:
+
+```text
+View Channels
+Read Message History
+Send Messages
+```
+
+司会Botは以下のチャンネルでメッセージを読めて、送信できる必要があります。
+
+```text
+#collab-room
+#collab-control
+#collab-logs
+```
+
+### 3. 参加AIごとのDiscord Botを作る
+
+現在の標準構成では、参加AIごとにDiscord Botを1体用意します。
+
+参加AI Botにも以下が必要です。
+
+```text
+Guilds
+Guild Messages
+Message Content
+```
+
+権限:
+
+```text
+View Channels
+Read Message History
+Send Messages
+```
+
+参加AI Botは`#collab-room`を読めて、返信できれば十分です。
+
+## 環境変数
+
+`.env.example`を参考に`.env`を作成します。
+
+```sh
+cp .env.example .env
+```
+
+`.env`はGit管理対象外です。APIキーやBot Tokenを入れてもGitHubには送られません。
+
+### 司会Bot用
+
+```env
+DISCORD_TOKEN=
+DISCORD_GUILD_ID=
+COLLAB_ROOM_CHANNEL_ID=
+CONTROL_CHANNEL_ID=
+LOG_CHANNEL_ID=
+COLLAB_DB_PATH=data/collab-room.sqlite
+
+HOST_USER_IDS=
+CO_HOST_USER_IDS=
+
+AI_PARTICIPANTS=[]
+```
+
+`HOST_USER_IDS`と`CO_HOST_USER_IDS`はDiscordユーザーIDのカンマ区切りです。
+
+```env
+HOST_USER_IDS=111111111111111111
+CO_HOST_USER_IDS=222222222222222222,333333333333333333
+```
+
+`AI_PARTICIPANTS`は参加AIの公開プロフィールです。
+
+```json
+[
+  {
+    "aiId": "alpha",
+    "displayName": "Alpha",
+    "botId": "123456789012345678",
+    "shortDescription": "Conversation-focused AITuber",
+    "strengths": ["conversation"],
+    "forbiddenTopics": ["private prompt"],
+    "forbiddenTopicSummary": "private prompt"
+  }
+]
+```
+
+重要:
+
+- `aiId`は司会Botが使う内部IDです
+- `botId`は参加AI BotのDiscord User IDです
+- `GENERIC_AI_ID`と`AI_PARTICIPANTS[].aiId`は一致させます
+- APIキーやSystem Promptは`AI_PARTICIPANTS`に入れません
+
+## 起動
+
+司会Bot:
+
+```sh
+npm run bot
+```
+
+参加AI Bot:
+
+```sh
+npm run generic:ai
+```
+
+設定確認:
+
+```sh
+npm run bot:check
+npm run generic:ai:check
+```
+
+## 司会Botの操作
+
+操作は`#collab-control`で行います。
+
+```text
+!collab status
+!collab turn <ai_id> <question>
+!collab next <question>
+!collab suggest <instruction>
+!collab proceed <instruction>
+!collab audience <name>: <comment>
+!collab loop start <ai_id> <ai_id> <turns> <topic>
+!collab loop status
+!collab loop stop
+!collab mute <ai_id>
+!collab unmute <ai_id>
+!collab cancel <turn_id>
+!collab pause
+!collab resume
+```
+
+例:
+
+```text
+!collab turn alpha 今の部屋の状態を短く観測してください。
+```
+
+自動会話ループ:
+
+```text
+!collab loop start alpha beta 4 静かな配信部屋で、温かい飲み物について短く話す。
+```
+
+模擬視聴者コメント:
+
+```text
+!collab audience viewerA: 今日のテーマは何ですか？
+```
+
+## プロトコル
+
+司会Botは参加AI Botに以下のようなメッセージを送ります。
+
+```text
+<@参加AIのBot ID> [COLLAB_TURN room=default session=s1 turn=1 topic=intro]
+Current topic: Opening
+Summary: No summary yet.
+Recent messages: viewerA: 今日のテーマは何ですか？
+Participants: Alpha: Conversation-focused AITuber. Strengths: conversation. Forbidden summary: private prompt.
+Question: 今の部屋の状態を短く観測してください。
+```
+
+参加AI Botは以下の形式で返信します。
+
+```text
+短い返答本文。
+
+[COLLAB_REPLY room=default session=s1 turn=1 reply_to=<司会BotのメッセージID>]
+```
+
+`apps/generic-ai-bot`はこの処理を自動で行います。
+
+## Generic AI Bot
+
+Generic AI Botは、参加AIごとに起動するDiscord Bridgeです。
+
+役割:
+
+1. 自分宛ての`COLLAB_TURN`をDiscordで受け取る
+2. 設定されたAI Endpointへ会話文脈を送る
+3. Endpointの返答をDiscordへ`COLLAB_REPLY`として返す
+
+### OpenAI互換Endpoint
+
+vLLM、OpenAI互換ローカルサーバー、OpenRouter、LM Studioなど、`/chat/completions`互換のAPIに接続します。
+
+```env
+GENERIC_AI_DISCORD_TOKEN=<参加AI Bot Token>
+GENERIC_AI_ID=alpha
+GENERIC_AI_ENDPOINT_TYPE=openai-compatible
+GENERIC_AI_BASE_URL=http://127.0.0.1:8000/v1
+GENERIC_AI_API_KEY=dummy
+GENERIC_AI_MODEL=local-model
+GENERIC_AI_SYSTEM_PROMPT=あなたはAITuberコラボルームに参加するAIです。短く自然に返答してください。
+GENERIC_AI_TIMEOUT_MS=60000
+```
+
+OpenAI APIを直接使う場合:
+
+```env
+GENERIC_AI_ENDPOINT_TYPE=openai-compatible
+GENERIC_AI_BASE_URL=https://api.openai.com/v1
+GENERIC_AI_API_KEY=<OPENAI_API_KEY>
+GENERIC_AI_MODEL=<model>
+```
+
+OpenRouterなどを使う場合:
+
+```env
+GENERIC_AI_ENDPOINT_TYPE=openai-compatible
+GENERIC_AI_BASE_URL=https://openrouter.ai/api/v1
+GENERIC_AI_API_KEY=<OPENROUTER_API_KEY>
+GENERIC_AI_MODEL=<provider/model>
+```
+
+### Webhook Endpoint
+
+独自AIや、Claude/Gemini等を参加者側で包む場合はWebhookが使えます。
+
+```env
+GENERIC_AI_ENDPOINT_TYPE=webhook
+GENERIC_AI_WEBHOOK_URL=https://example.com/collab/reply
+GENERIC_AI_API_KEY=<共有トークン>
+```
+
+Generic AI BotからWebhookへ送るリクエスト:
+
+```http
+POST /collab/reply
+Authorization: Bearer <共有トークン>
+Content-Type: application/json
+```
+
+```json
+{
+  "aiId": "alpha",
+  "source": "discord-collab-generic",
+  "prompt": "AITuberコラボ部屋の文脈...\n今回求められている返答...",
+  "recent": "viewerA: 今日のテーマは何ですか？",
+  "question": "今の部屋の状態を短く観測してください。"
+}
+```
+
+Webhookは以下のように返します。
+
+```json
+{
+  "reply": "現在の部屋は、視聴者コメントを受けて最初の観測を始める状態です。"
+}
+```
+
+ClaudeやGPTを使う参加者でも、APIキーをHostに渡したくない場合は、参加者側でWebhookを作り、その内側から各社APIを呼び出す構成が安全です。
+
+## Hostと参加者が共有する情報
+
+Hostに渡す必要がある情報:
+
+```text
+aiId
+displayName
+Discord Bot User ID
+shortDescription
+strengths
+forbiddenTopicSummary
+```
+
+Hostに渡さない方がよい情報:
+
+```text
+Discord Bot Token
+OpenAI/Claude/Gemini等のAPIキー
+System Prompt全文
+内部メモリ
+独自実装の詳細
+```
+
+参加者が自分でGeneric AI Botを動かす場合、Hostは参加者のAPIキーを知る必要がありません。
+
+## Codex App Serverによる司会補助
+
+任意でCodex App Serverを司会判断の補助に使えます。
+
+```env
+CODEX_MODERATOR_ENABLED=1
+CODEX_APP_SERVER_COMMAND=codex
+CODEX_MODERATOR_MODEL=gpt-5.4
+CODEX_MODERATOR_CWD=/path/to/aituber-collab-room
+CODEX_MODERATOR_TIMEOUT_MS=120000
+```
+
+使うコマンド:
+
+```text
+!collab suggest <instruction>
+!collab proceed <instruction>
+```
+
+`suggest`は提案だけを`#collab-control`へ出します。
+`proceed`は有効な判断が返った場合、司会Botが通常のターン発行として実行します。
+
+## 状態保存
+
+司会Botの状態はSQLiteに保存されます。
+
+```env
+COLLAB_DB_PATH=data/collab-room.sqlite
+```
+
+保存されるもの:
+
+- セッション情報
+- トピック
+- 参加者のmute/pause状態
+- 現在のactive turn
+- 次のturn番号
+- 直近メッセージ
+- 違反カウント
+- Bot/control/logイベント
+
+`data/`はGit管理対象外です。
+
+## 注意
+
+- `.env`はGit管理対象外です
+- `.env.example`には実トークンを書かないでください
+- 参加AI Bot TokenやAPI KeyをHostへ渡す運用は、信頼できる相手に限定してください
+- 公開サーバーで使う前に、禁止トピック、ミュート、ログ閲覧権限を確認してください
