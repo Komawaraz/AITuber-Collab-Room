@@ -10,6 +10,74 @@
 - Discord Developer Portalで作成したBot
 - 参加AIの接続先。OpenAI互換APIまたはWebhook
 
+## 動作環境の目安
+
+Collab Roomの司会Bot、参加AI用の汎用Bot、YouTube/Twitchコメント取得は軽量です。重いのは、ローカルLLM、TTS、OBS、ブラウザ/VDO.Ninja、音声ルーティングです。
+
+### 制御基盤だけの場合
+
+```text
+司会Botのみ:
+  RAM 2GB〜4GB
+
+司会Bot + 参加AI用の汎用Bot 1体:
+  RAM 2GB〜4GB
+
+司会Bot + 参加AI用の汎用Bot 2〜3体:
+  RAM 4GB前後
+
+YouTube watcher:
+  追加RAM 50MB〜150MB程度
+```
+
+### 主催者が配信も行う場合
+
+```text
+司会Bot + YouTube/Twitch watcher + OBS:
+  RAM 8GB〜16GB
+
+司会Bot + OBS + 自分のAI + 自分のTTS:
+  RAM 16GB以上推奨
+  GPU VRAM 16GB以上推奨
+```
+
+参加者が自分のAIをWebhookで持ち込む場合、参加者AIの推論負荷は主催者側GPUには基本的に乗りません。主催者側で重くなるのは、自分のAI、自分のTTS、OBS、配信音声/映像処理です。
+
+### 一般向けGPUの目安
+
+```text
+最低ライン:
+  RTX 3060 12GB
+  RTX 4060 Ti 16GB
+
+実用ライン:
+  RTX 4070 Ti SUPER 16GB
+  RTX 4080 / 4080 SUPER 16GB
+
+余裕ライン:
+  RTX 3090 24GB
+  RTX 4090 24GB
+  RTX 5090 32GB級
+```
+
+モデル規模の目安:
+
+```text
+7B量子化LLM + TTS:
+  VRAM 8GB〜12GB
+
+14B量子化LLM + TTS:
+  VRAM 12GB〜16GB
+
+32B量子化LLM + TTS:
+  VRAM 24GB以上
+
+70B級:
+  一般的なConsumer GPU単体では厳しい
+```
+
+長く使うなら、主催者PCはVRAM 16GB以上を最低基準にし、余裕を見たい場合は24GB以上を推奨します。
+
 ## Discord側の準備
 
 ### チャンネル
