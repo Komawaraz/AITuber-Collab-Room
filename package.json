@@ -1,0 +1,24 @@
+{
+  "name": "aituber-collab-room",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "bot": "node apps/bot/src/index.js",
+    "bot:check": "node apps/bot/src/check-config.js",
+    "generic:ai": "node apps/generic-ai-bot/src/index.js",
+    "generic:ai:check": "node apps/generic-ai-bot/src/check-config.js",
+    "test": "node --test",
+    "test:watch": "node --test --watch"
+  },
+  "dependencies": {
+    "discord.js": "^14.26.4"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
