@@ -221,7 +221,7 @@ describe("bot control commands", () => {
     });
 
     assert.equal(injected.kind, "audience");
-    assert.match(injected.roomMessage, /\[VIEWER_COMMENT source="discord-manual" name="viewerA"\]/);
+    assert.match(injected.roomMessage, /\[VIEWER_COMMENT source="discord-manual" role="viewer" name="viewerA"\]/);
     assert.equal(state.recentMessages.at(-1).author, "viewerA");
 
     const turn = await handleControlCommand({

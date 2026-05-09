@@ -159,9 +159,10 @@ function injectAudienceComment({ state, args }) {
   });
 }
 
-export function injectAudienceCommentFromSource({ state, source = "external", name, comment }) {
+export function injectAudienceCommentFromSource({ state, source = "external", role = "viewer", name, comment }) {
   const normalized = {
     source: sanitizeSourceName(source),
+    role: sanitizeCommentRole(role),
     name: sanitizeAudienceName(name || "viewer"),
     comment: String(comment || "").trim()
   };
@@ -170,20 +171,25 @@ export function injectAudienceCommentFromSource({ state, source = "external", na
   }
 
   const id = `viewer-${normalized.source}-${Date.now()}-${state.recentMessages.length}`;
-  const content = `[VIEWER_COMMENT source="${normalized.source}" name="${escapeAudienceName(normalized.name)}"] ${normalized.comment}`;
+  const content = `[VIEWER_COMMENT source="${normalized.source}" role="${normalized.role}" name="${escapeAudienceName(normalized.name)}"] ${normalized.comment}`;
+  const contextName = normalized.role === "host"
+    ? `${normalized.name}(host)`
+    : normalized.role === "viewer"
+      ? normalized.name
+      : `${normalized.name}(${normalized.role})`;
 
   rememberMessage(state, {
     id,
     authorId: `viewer:${normalized.source}`,
-    authorName: normalized.name,
+    authorName: contextName,
     content: normalized.comment
   });
 
   return {
     kind: "audience",
     roomMessage: content,
-    controlMessages: [`Injected audience comment from ${normalized.name}. source=${normalized.source}`],
-    logMessages: [`AUDIENCE_COMMENT source=${normalized.source} name=${normalized.name} text=${normalized.comment}`]
+    controlMessages: [`Injected audience comment from ${normalized.name}. source=${normalized.source} role=${normalized.role}`],
+    logMessages: [`AUDIENCE_COMMENT source=${normalized.source} role=${normalized.role} name=${normalized.name} text=${normalized.comment}`]
   };
 }
 
@@ -207,6 +213,13 @@ function sanitizeAudienceName(name) {
 
 function sanitizeSourceName(source) {
   return String(source || "external").replace(/[^a-zA-Z0-9_.:-]/g, "_").slice(0, 48) || "external";
+}
+
+function sanitizeCommentRole(role) {
+  const normalized = String(role || "viewer").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  return ["host", "moderator", "member", "vip", "viewer"].includes(normalized)
+    ? normalized
+    : "viewer";
 }
 
 function escapeAudienceName(name) {

@@ -3,8 +3,14 @@ import { describe, it } from "node:test";
 import { loadBotConfig } from "../apps/bot/src/config.js";
 import { injectAudienceCommentFromSource } from "../apps/bot/src/handlers.js";
 import { createInitialState } from "../apps/bot/src/state.js";
-import { loadCommentIngestClientConfig, postAudienceComment } from "../apps/comment-ingest/src/client.js";
+import {
+  applyCommentRoleDetection,
+  envFlag,
+  loadCommentIngestClientConfig,
+  postAudienceComment
+} from "../apps/comment-ingest/src/client.js";
 import { parsePrivmsg } from "../apps/comment-ingest/src/twitch.js";
+import { roleFromYouTubeAuthor } from "../apps/comment-ingest/src/youtube.js";
 
 describe("external comment ingest", () => {
   it("loads optional ingest server config", () => {
@@ -35,13 +41,15 @@ describe("external comment ingest", () => {
     const result = injectAudienceCommentFromSource({
       state,
       source: "youtube",
+      role: "host",
       name: "viewerA",
       comment: "聞こえていますか？"
     });
 
     assert.equal(result.kind, "audience");
-    assert.match(result.roomMessage, /\[VIEWER_COMMENT source="youtube" name="viewerA"\]/);
+    assert.match(result.roomMessage, /\[VIEWER_COMMENT source="youtube" role="host" name="viewerA"\]/);
     assert.equal(state.recentMessages.at(-1).authorId, "viewer:youtube");
+    assert.equal(state.recentMessages.at(-1).author, "viewerA(host)");
     assert.equal(state.recentMessages.at(-1).text, "聞こえていますか？");
   });
 
@@ -50,6 +58,7 @@ describe("external comment ingest", () => {
       endpoint: "http://127.0.0.1:39210/audience",
       token: "shared",
       source: "twitch",
+      role: "moderator",
       name: "viewerB",
       comment: "見えています",
       fetchImpl: async (url, options) => {
@@ -57,6 +66,7 @@ describe("external comment ingest", () => {
         assert.equal(options.headers.Authorization, "Bearer shared");
         assert.deepEqual(JSON.parse(options.body), {
           source: "twitch",
+          role: "moderator",
           name: "viewerB",
           comment: "見えています"
         });
@@ -83,13 +93,29 @@ describe("external comment ingest", () => {
     assert.equal(config.token, "token");
   });
 
+  it("loads comment role detection flags", () => {
+    assert.equal(envFlag("1", false), true);
+    assert.equal(envFlag("off", true), false);
+    assert.equal(envFlag("", true), true);
+    assert.equal(applyCommentRoleDetection("host", true), "host");
+    assert.equal(applyCommentRoleDetection("host", false), "viewer");
+  });
+
   it("parses Twitch PRIVMSG lines", () => {
     const message = parsePrivmsg(
-      "@display-name=ViewerA;id=abc :viewera!viewera@viewera.tmi.twitch.tv PRIVMSG #channel :こんにちは"
+      "@badges=broadcaster/1;display-name=ViewerA;id=abc :viewera!viewera@viewera.tmi.twitch.tv PRIVMSG #channel :こんにちは"
     );
 
     assert.equal(message.displayName, "ViewerA");
     assert.equal(message.login, "viewera");
+    assert.equal(message.role, "host");
     assert.equal(message.text, "こんにちは");
+  });
+
+  it("maps YouTube chat owner comments to host role", () => {
+    assert.equal(roleFromYouTubeAuthor({ isChatOwner: true }), "host");
+    assert.equal(roleFromYouTubeAuthor({ isChatModerator: true }), "moderator");
+    assert.equal(roleFromYouTubeAuthor({ isChatSponsor: true }), "member");
+    assert.equal(roleFromYouTubeAuthor({}), "viewer");
   });
 });

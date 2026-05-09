@@ -1,6 +1,11 @@
 import { fileURLToPath } from "node:url";
 import { loadEnvFile } from "../../bot/src/env-file.js";
-import { loadCommentIngestClientConfig, postAudienceComment } from "./client.js";
+import {
+  applyCommentRoleDetection,
+  envFlag,
+  loadCommentIngestClientConfig,
+  postAudienceComment
+} from "./client.js";
 
 if (isMainModule()) {
   loadEnvFile();
@@ -8,6 +13,7 @@ if (isMainModule()) {
     ...loadCommentIngestClientConfig(),
     apiKey: process.env.YOUTUBE_API_KEY || "",
     liveChatId: process.env.YOUTUBE_LIVE_CHAT_ID || "",
+    roleDetectionEnabled: envFlag(process.env.YOUTUBE_COMMENT_ROLE_DETECTION, true),
     once: process.argv.includes("--once")
   };
 
@@ -23,6 +29,7 @@ export async function watchYouTubeLiveChat({
   liveChatId,
   endpoint,
   token,
+  roleDetectionEnabled = true,
   once = false,
   fetchImpl = fetch,
   sleep = defaultSleep
@@ -57,6 +64,7 @@ export async function watchYouTubeLiveChat({
         endpoint,
         token,
         source: "youtube",
+        role: applyCommentRoleDetection(roleFromYouTubeAuthor(item.authorDetails || {}), roleDetectionEnabled),
         name,
         comment,
         fetchImpl
@@ -70,6 +78,19 @@ export async function watchYouTubeLiveChat({
     }
     await sleep(Math.max(1_000, body.pollingIntervalMillis || 5_000));
   }
+}
+
+export function roleFromYouTubeAuthor(authorDetails) {
+  if (authorDetails.isChatOwner) {
+    return "host";
+  }
+  if (authorDetails.isChatModerator) {
+    return "moderator";
+  }
+  if (authorDetails.isChatSponsor) {
+    return "member";
+  }
+  return "viewer";
 }
 
 function defaultSleep(ms) {

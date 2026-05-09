@@ -426,19 +426,33 @@ COMMENT_INGEST_ENDPOINT=http://127.0.0.1:39210/audience
 curl -X POST http://127.0.0.1:39210/audience \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <共有トークン>' \
-  -d '{"source":"youtube","name":"viewerA","comment":"聞こえていますか？"}'
+  -d '{"source":"youtube","role":"viewer","name":"viewerA","comment":"聞こえていますか？"}'
 ```
 
 取り込まれたコメントは`#collab-room`へ`[VIEWER_COMMENT ...]`として表示され、次回以降の`COLLAB_TURN`の`Recent messages`に入ります。
+
+コメントには`role`も付きます。
+
+```text
+[VIEWER_COMMENT source="youtube" role="host" name="ChannelOwner"] 配信主コメント
+[VIEWER_COMMENT source="youtube" role="viewer" name="viewerA"] 視聴者コメント
+```
+
+YouTube/Twitch watcherは、初期設定では配信主やモデレーターなどのroleを自動判定します。`Recent messages`内では`ChannelOwner(host): ...`のように入り、AIが通常視聴者コメントと区別できます。
+
+ただし、配信主や主催者が常に特別扱いされるべきとは限りません。主催者もただの視聴者として参加したい場合は、各watcherのrole判定をOFFにします。
 
 ### YouTube Live Chat watcher
 
 ```env
 YOUTUBE_API_KEY=
 YOUTUBE_LIVE_CHAT_ID=
+YOUTUBE_COMMENT_ROLE_DETECTION=1
 COMMENT_INGEST_ENDPOINT=http://127.0.0.1:39210/audience
 COMMENT_INGEST_TOKEN=<共有トークン>
 ```
+
+`YOUTUBE_COMMENT_ROLE_DETECTION=0`にすると、配信チャンネル主、モデレーター、メンバーのコメントもすべて`role="viewer"`として取り込みます。
 
 起動:
 
@@ -454,15 +468,27 @@ npm run comments:youtube -- --once
 
 YouTube側では`liveChatId`が必要です。これは配信のLive Chat API情報から取得します。watcherはYouTube APIの`pollingIntervalMillis`に従って定期取得します。
 
+YouTubeのコメントrole:
+
+| YouTube側 | Collab Room側 |
+| --- | --- |
+| 配信チャンネル主 | `host` |
+| モデレーター | `moderator` |
+| メンバー/スポンサー | `member` |
+| 通常視聴者 | `viewer` |
+
 ### Twitch Chat watcher
 
 ```env
 TWITCH_CHANNEL=<チャンネル名>
 TWITCH_BOT_USERNAME=<Twitch Botユーザー名>
 TWITCH_OAUTH_TOKEN=<oauth token>
+TWITCH_COMMENT_ROLE_DETECTION=1
 COMMENT_INGEST_ENDPOINT=http://127.0.0.1:39210/audience
 COMMENT_INGEST_TOKEN=<共有トークン>
 ```
+
+`TWITCH_COMMENT_ROLE_DETECTION=0`にすると、`broadcaster`、`moderator`、`vip`、`subscriber`のbadgeが付いたコメントもすべて`role="viewer"`として取り込みます。
 
 起動:
 
@@ -471,6 +497,16 @@ npm run comments:twitch
 ```
 
 TwitchはIRC over WebSocketで`PRIVMSG`を読み、`source=twitch`として司会Botへ送ります。
+
+Twitchのコメントrole:
+
+| Twitch badge | Collab Room側 |
+| --- | --- |
+| `broadcaster` | `host` |
+| `moderator` | `moderator` |
+| `vip` | `vip` |
+| `subscriber` | `member` |
+| なし | `viewer` |
 
 ## 発話被り防止
 

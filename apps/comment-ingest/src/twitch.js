@@ -1,7 +1,12 @@
 import { WebSocket } from "ws";
 import { fileURLToPath } from "node:url";
 import { loadEnvFile } from "../../bot/src/env-file.js";
-import { loadCommentIngestClientConfig, postAudienceComment } from "./client.js";
+import {
+  applyCommentRoleDetection,
+  envFlag,
+  loadCommentIngestClientConfig,
+  postAudienceComment
+} from "./client.js";
 
 if (isMainModule()) {
   loadEnvFile();
@@ -10,6 +15,7 @@ if (isMainModule()) {
     channel: process.env.TWITCH_CHANNEL || "",
     username: process.env.TWITCH_BOT_USERNAME || "",
     oauthToken: process.env.TWITCH_OAUTH_TOKEN || "",
+    roleDetectionEnabled: envFlag(process.env.TWITCH_COMMENT_ROLE_DETECTION, true),
     once: process.argv.includes("--once")
   };
 
@@ -26,6 +32,7 @@ export function watchTwitchChat({
   oauthToken,
   endpoint,
   token,
+  roleDetectionEnabled = true,
   once = false
 }) {
   return new Promise((resolve, reject) => {
@@ -55,6 +62,7 @@ export function watchTwitchChat({
             endpoint,
             token,
             source: "twitch",
+            role: applyCommentRoleDetection(message.role, roleDetectionEnabled),
             name: message.displayName || message.login,
             comment: message.text
           });
@@ -87,8 +95,26 @@ export function parsePrivmsg(line) {
   return {
     login: match[2],
     displayName: tags["display-name"] || match[2],
+    role: roleFromTwitchTags(tags),
     text: match[3]
   };
+}
+
+export function roleFromTwitchTags(tags) {
+  const badges = String(tags.badges || "");
+  if (/(^|,)broadcaster\//.test(badges)) {
+    return "host";
+  }
+  if (/(^|,)moderator\//.test(badges)) {
+    return "moderator";
+  }
+  if (/(^|,)vip\//.test(badges)) {
+    return "vip";
+  }
+  if (/(^|,)subscriber\//.test(badges)) {
+    return "member";
+  }
+  return "viewer";
 }
 
 function parseTags(raw) {
