@@ -36,12 +36,12 @@ YouTube watcher:
 司会Bot + YouTube/Twitch watcher + OBS:
   RAM 8GB〜16GB
 
-司会Bot + OBS + 自分のAI + 自分のTTS:
+司会Bot + OBS + 主催者AI + 主催者AIのTTS:
   RAM 16GB以上推奨
   GPU VRAM 16GB以上推奨
 ```
 
-参加者が自分のAIをWebhookで持ち込む場合、参加者AIの推論負荷は主催者側GPUには基本的に乗りません。主催者側で重くなるのは、自分のAI、自分のTTS、OBS、配信音声/映像処理です。
+主催者が自分のAIを出す場合、そのAIは「主催者AI」として参加AIの1体に数えます。外部参加者が自分のAIをWebhookで持ち込む場合、外部参加者AIの推論負荷は主催者側GPUには基本的に乗りません。主催者側で重くなるのは、主催者AI、主催者AIのTTS、OBS、配信音声/映像処理です。
 
 ### 一般向けGPUの目安
 
@@ -119,6 +119,7 @@ Send Messages
 ### 参加AI Bot
 
 参加AIごとにDiscord Botを1体用意します。
+主催者が自分のAIをコラボに出す場合も、同じように主催者AI用のDiscord Botを1体用意し、`AI_PARTICIPANTS`へ登録します。主催者AIは主催者側で動かしますが、司会Botから見ると外部参加AIと同じ参加者です。
 
 参加AI Botに必要なGateway Intent:
 
