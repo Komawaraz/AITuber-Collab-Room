@@ -39,6 +39,12 @@ export function loadBotConfig(env = process.env) {
       model: env.CODEX_MODERATOR_MODEL || "gpt-5.4",
       cwd: env.CODEX_MODERATOR_CWD || process.cwd(),
       timeoutMs: parsePositiveInt(env.CODEX_MODERATOR_TIMEOUT_MS, 120_000)
+    },
+    commentIngest: {
+      enabled: env.COMMENT_INGEST_ENABLED === "1",
+      host: env.COMMENT_INGEST_HOST || "127.0.0.1",
+      port: parsePositiveInt(env.COMMENT_INGEST_PORT, 39210),
+      token: env.COMMENT_INGEST_TOKEN || ""
     }
   };
 }

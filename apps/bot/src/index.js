@@ -1,10 +1,16 @@
 import { Client, GatewayIntentBits, Partials } from "discord.js";
+import { createServer } from "node:http";
 import { openSqliteStore } from "../../../packages/db/src/sqlite.js";
 import { acquireProcessLock } from "../../../packages/runtime-lock/src/index.js";
 import { loadBotConfig } from "./config.js";
 import { createModerator } from "./moderator.js";
 import { loadEnvFile } from "./env-file.js";
-import { handleControlCommand, handleRoomMessage, handleTurnTimeout } from "./handlers.js";
+import {
+  handleControlCommand,
+  handleRoomMessage,
+  handleTurnTimeout,
+  injectAudienceCommentFromSource
+} from "./handlers.js";
 import { createInitialState } from "./state.js";
 
 loadEnvFile();
@@ -29,6 +35,7 @@ const timeoutHandles = new Map();
 client.once("clientReady", () => {
   console.log(`AITuber Collab Room bot logged in as ${client.user.tag}`);
   void checkConfiguredChannels();
+  startCommentIngestServer();
   store.appendEvent({
     sessionId: state.session.sessionId,
     type: "BOT_READY",
@@ -76,6 +83,47 @@ client.on("messageCreate", async (message) => {
 });
 
 await client.login(config.token);
+
+function startCommentIngestServer() {
+  if (!config.commentIngest.enabled) {
+    return;
+  }
+
+  const server = createServer(async (request, response) => {
+    try {
+      if (request.method !== "POST" || request.url !== "/audience") {
+        sendJson(response, 404, { ok: false, error: "not_found" });
+        return;
+      }
+      if (config.commentIngest.token) {
+        const authorization = request.headers.authorization || "";
+        if (authorization !== `Bearer ${config.commentIngest.token}`) {
+          sendJson(response, 401, { ok: false, error: "unauthorized" });
+          return;
+        }
+      }
+
+      const body = await readJsonBody(request, 16_384);
+      const result = injectAudienceCommentFromSource({
+        state,
+        source: body.source,
+        name: body.name,
+        comment: body.comment
+      });
+      await publishResult(result);
+      sendJson(response, 200, { ok: true, kind: result.kind });
+    } catch (error) {
+      console.error(`[bot:comment-ingest] ${error.stack || error.message}`);
+      sendJson(response, 400, { ok: false, error: error.message });
+    }
+  });
+
+  server.listen(config.commentIngest.port, config.commentIngest.host, () => {
+    console.log(
+      `[bot:comment-ingest] listening on http://${config.commentIngest.host}:${config.commentIngest.port}/audience`
+    );
+  });
+}
 
 function normalizeDiscordMessage(message) {
   return {
@@ -176,6 +224,33 @@ function persistResult(result) {
     });
   }
   store.saveStateSnapshot(state);
+}
+
+function readJsonBody(request, maxBytes) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      raw += chunk;
+      if (raw.length > maxBytes) {
+        request.destroy();
+        reject(new Error("request_body_too_large"));
+      }
+    });
+    request.on("end", () => {
+      try {
+        resolve(JSON.parse(raw || "{}"));
+      } catch {
+        reject(new Error("invalid_json"));
+      }
+    });
+    request.on("error", reject);
+  });
+}
+
+function sendJson(response, statusCode, body) {
+  response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+  response.end(JSON.stringify(body));
 }
 
 async function checkConfiguredChannels() {

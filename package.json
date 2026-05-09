@@ -12,11 +12,14 @@
     "bot:check": "node apps/bot/src/check-config.js",
     "generic:ai": "node apps/generic-ai-bot/src/index.js",
     "generic:ai:check": "node apps/generic-ai-bot/src/check-config.js",
+    "comments:youtube": "node apps/comment-ingest/src/youtube.js",
+    "comments:twitch": "node apps/comment-ingest/src/twitch.js",
     "test": "node --test",
     "test:watch": "node --test --watch"
   },
   "dependencies": {
-    "discord.js": "^14.26.4"
+    "discord.js": "^14.26.4",
+    "ws": "^8.18.3"
   },
   "engines": {
     "node": ">=22"

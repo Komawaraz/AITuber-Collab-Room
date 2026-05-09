@@ -142,21 +142,39 @@ function injectAudienceComment({ state, args }) {
   }
 
   const parsed = parseAudienceComment(raw);
-  const id = `mock-viewer-${Date.now()}-${state.recentMessages.length}`;
-  const content = `[MOCK_VIEWER name="${escapeAudienceName(parsed.name)}"] ${parsed.comment}`;
+  return injectAudienceCommentFromSource({
+    state,
+    source: "discord-manual",
+    name: parsed.name,
+    comment: parsed.comment
+  });
+}
+
+export function injectAudienceCommentFromSource({ state, source = "external", name, comment }) {
+  const normalized = {
+    source: sanitizeSourceName(source),
+    name: sanitizeAudienceName(name || "viewer"),
+    comment: String(comment || "").trim()
+  };
+  if (!normalized.comment) {
+    return controlResult("Audience comment ignored: empty comment.");
+  }
+
+  const id = `viewer-${normalized.source}-${Date.now()}-${state.recentMessages.length}`;
+  const content = `[VIEWER_COMMENT source="${normalized.source}" name="${escapeAudienceName(normalized.name)}"] ${normalized.comment}`;
 
   rememberMessage(state, {
     id,
-    authorId: "mock-viewer",
-    authorName: parsed.name,
-    content: parsed.comment
+    authorId: `viewer:${normalized.source}`,
+    authorName: normalized.name,
+    content: normalized.comment
   });
 
   return {
     kind: "audience",
     roomMessage: content,
-    controlMessages: [`Injected mock audience comment from ${parsed.name}.`],
-    logMessages: [`MOCK_AUDIENCE name=${parsed.name} text=${parsed.comment}`]
+    controlMessages: [`Injected audience comment from ${normalized.name}. source=${normalized.source}`],
+    logMessages: [`AUDIENCE_COMMENT source=${normalized.source} name=${normalized.name} text=${normalized.comment}`]
   };
 }
 
@@ -176,6 +194,10 @@ function parseAudienceComment(raw) {
 
 function sanitizeAudienceName(name) {
   return String(name || "viewer").replace(/\s+/g, "_").replace(/["\\]/g, "").slice(0, 32) || "viewer";
+}
+
+function sanitizeSourceName(source) {
+  return String(source || "external").replace(/[^a-zA-Z0-9_.:-]/g, "_").slice(0, 48) || "external";
 }
 
 function escapeAudienceName(name) {

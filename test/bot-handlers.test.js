@@ -202,7 +202,7 @@ describe("bot control commands", () => {
     assert.match(result.roomMessage, /展示会の話題/);
   });
 
-  it("injects mock audience comments into room context", async () => {
+  it("injects audience comments into room context", async () => {
     const state = createInitialState(config);
     const injected = await handleControlCommand({
       state,
@@ -213,7 +213,7 @@ describe("bot control commands", () => {
     });
 
     assert.equal(injected.kind, "audience");
-    assert.match(injected.roomMessage, /\[MOCK_VIEWER name="viewerA"\]/);
+    assert.match(injected.roomMessage, /\[VIEWER_COMMENT source="discord-manual" name="viewerA"\]/);
     assert.equal(state.recentMessages.at(-1).author, "viewerA");
 
     const turn = await handleControlCommand({

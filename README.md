@@ -12,6 +12,7 @@ AITuber同士が安全にコラボするための、Discord中心のコラボル
 - 発言順、ミュート、停止、リトライ、タイムアウトを管理する
 - 直近会話、参加者情報、セッション要約をAIへ渡す
 - 模擬視聴者コメントを会話文脈に入れる
+- YouTube/Twitchなど外部配信コメントを取り込む入口を用意する
 - 2体のAIで短い自動会話ループを試す
 - OpenAI互換EndpointまたはWebhook Endpointを持つAIを参加させる
 - 任意でCodex App Serverを司会判断の補助に使う
@@ -387,6 +388,84 @@ Auto loop completed
 ```text
 !collab loop stop
 ```
+
+## YouTube/Twitchコメント入口
+
+DiscordではなくYouTubeやTwitchを見る視聴者のコメントは、外部コメントとして司会Botへ取り込めます。
+
+構成:
+
+```text
+YouTube Live Chat / Twitch Chat
+  -> apps/comment-ingest のwatcher
+  -> 司会Botの HTTP /audience
+  -> #collab-room と Recent messages
+  -> 次の COLLAB_TURN に反映
+```
+
+### 司会Bot側の入口を有効にする
+
+```env
+COMMENT_INGEST_ENABLED=1
+COMMENT_INGEST_HOST=127.0.0.1
+COMMENT_INGEST_PORT=39210
+COMMENT_INGEST_TOKEN=<共有トークン>
+COMMENT_INGEST_ENDPOINT=http://127.0.0.1:39210/audience
+```
+
+`COMMENT_INGEST_TOKEN`を設定した場合、watcher側も同じ値を設定します。HTTPリクエストでは`Authorization: Bearer <共有トークン>`として送られます。
+
+手動テスト:
+
+```sh
+curl -X POST http://127.0.0.1:39210/audience \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <共有トークン>' \
+  -d '{"source":"youtube","name":"viewerA","comment":"聞こえていますか？"}'
+```
+
+取り込まれたコメントは`#collab-room`へ`[VIEWER_COMMENT ...]`として表示され、次回以降の`COLLAB_TURN`の`Recent messages`に入ります。
+
+### YouTube Live Chat watcher
+
+```env
+YOUTUBE_API_KEY=
+YOUTUBE_LIVE_CHAT_ID=
+COMMENT_INGEST_ENDPOINT=http://127.0.0.1:39210/audience
+COMMENT_INGEST_TOKEN=<共有トークン>
+```
+
+起動:
+
+```sh
+npm run comments:youtube
+```
+
+1回だけ取得して終了するテスト:
+
+```sh
+npm run comments:youtube -- --once
+```
+
+YouTube側では`liveChatId`が必要です。これは配信のLive Chat API情報から取得します。watcherはYouTube APIの`pollingIntervalMillis`に従って定期取得します。
+
+### Twitch Chat watcher
+
+```env
+TWITCH_CHANNEL=<チャンネル名>
+TWITCH_BOT_USERNAME=<Twitch Botユーザー名>
+TWITCH_OAUTH_TOKEN=<oauth token>
+COMMENT_INGEST_ENDPOINT=http://127.0.0.1:39210/audience
+COMMENT_INGEST_TOKEN=<共有トークン>
+```
+
+起動:
+
+```sh
+npm run comments:twitch
+```
+
+TwitchはIRC over WebSocketで`PRIVMSG`を読み、`source=twitch`として司会Botへ送ります。
 
 ## プロトコル
 
