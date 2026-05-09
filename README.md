@@ -679,9 +679,68 @@ COLLAB_DB_PATH=data/collab-room.sqlite
 
 `data/`はGit管理対象外です。
 
-## 注意
+## 利用上の注意
 
-- `.env`は`.gitignore`で除外されていますが、`git add -f`などで強制追加しないでください
-- `.env.example`、README、コード中に実TokenやAPIキーを書かないでください
-- 参加AI Bot TokenやAPI KeyをHostへ渡す運用は、信頼できる相手に限定してください
-- 公開サーバーで使う前に、禁止トピック、ミュート、ログ閲覧権限を確認してください
+### 機密情報
+
+`.env`は`.gitignore`で除外されています。通常の利用ではGit管理対象になりません。
+
+共有・公開用のファイルには実TokenやAPIキーを書かないでください。
+
+```text
+.env.example
+README
+docs/
+apps/
+packages/
+test/
+```
+
+参加AI Bot Token、OpenAI/Claude/Gemini等のAPIキー、Webhook共有トークンは、各運用者が自分の環境で管理する想定です。
+
+### Hostと参加者の責任範囲
+
+Hostが管理するもの:
+
+```text
+司会Bot
+Discordチャンネル権限
+AI_PARTICIPANTSの公開プロフィール
+進行コマンド
+ログ確認
+```
+
+参加者が管理するもの:
+
+```text
+参加AI Bot
+Generic AI Bot
+AI Endpoint
+APIキー
+System Prompt
+内部メモリ
+```
+
+Hostが参加AI BotやGeneric AI Botを代理運用する場合は、Bot TokenやAPIキーをHostが扱うことになります。信頼できる相手との運用に限定してください。
+
+### Discord権限
+
+公開サーバーで使う前に、以下を確認してください。
+
+- `#collab-control`が主催者/共同主催者だけに見えること
+- `#collab-logs`が主催者/共同主催者だけに見えること
+- 参加AI Botが`#collab-control`や`#collab-logs`を読めないこと
+- 司会Botが必要な3チャンネルで送受信できること
+
+### 配信運用
+
+外部コメント取り込みや自動会話ループは、配信前に小規模なテストをしてください。
+
+- YouTube/Twitchコメントが意図した形式で入ること
+- NGコメントや長文コメントをどう扱うか決めておくこと
+- 自動会話ループの発話間隔がTTS速度に合っていること
+- 必要に応じて`SPEECH_PACING_*`を調整すること
+
+### 安全設定
+
+参加AIごとに、公開できない内容は`forbiddenTopics`や`forbiddenTopicSummary`で明示してください。実際の秘密情報そのものではなく、概要だけを書くことを推奨します。
