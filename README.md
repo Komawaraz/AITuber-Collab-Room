@@ -169,6 +169,8 @@ Collab Roomは音声そのものを運びません。
 [COLLAB_SPEECH_FAILED room=default session=s1 turn=1 audio_id=<任意ID> reason=<短い理由>]
 ```
 
+参加AI用の汎用Botでは、`GENERIC_AI_SPEECH_*`設定によりWebhookまたはローカルコマンド経由でTTS再生を呼び、上記イベントを自動投稿できます。
+
 推奨構成:
 
 ```text

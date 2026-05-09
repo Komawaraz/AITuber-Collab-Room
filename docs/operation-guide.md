@@ -300,6 +300,66 @@ GENERIC_AI_API_KEY=<共有トークン>
 
 参加者が自分で汎用Botを動かす場合、主催者は参加者のAPIキーを知る必要がありません。
 
+### 参加者側TTS再生フック
+
+参加AI Bot側でTTSを再生し、再生状態を司会Botへ通知する場合は、以下を使います。
+
+Webhook方式:
+
+```env
+GENERIC_AI_SPEECH_ENABLED=1
+GENERIC_AI_SPEECH_DRIVER=webhook
+GENERIC_AI_SPEECH_WEBHOOK_URL=http://127.0.0.1:5000/speech/play
+GENERIC_AI_SPEECH_API_KEY=<共有トークン>
+GENERIC_AI_SPEECH_TIMEOUT_MS=120000
+```
+
+コマンド方式:
+
+```env
+GENERIC_AI_SPEECH_ENABLED=1
+GENERIC_AI_SPEECH_DRIVER=command
+GENERIC_AI_SPEECH_COMMAND=python
+GENERIC_AI_SPEECH_ARGS=["scripts/play_tts.py"]
+GENERIC_AI_SPEECH_TIMEOUT_MS=120000
+```
+
+動作:
+
+```text
+1. Generic AI BotがCOLLAB_REPLYを投稿
+2. Generic AI BotがCOLLAB_SPEECH_STARTEDを投稿
+3. Webhookまたはコマンドで参加者側TTSを再生
+4. 成功したらCOLLAB_SPEECH_FINISHEDを投稿
+5. 失敗したらCOLLAB_SPEECH_FAILEDを投稿
+```
+
+Webhookには以下のJSONが送られます。Webhookは、TTS再生が完了してから成功応答を返してください。
+
+```json
+{
+  "aiId": "alpha",
+  "room": "default",
+  "session": "s1",
+  "turn": "1",
+  "audioId": "alpha-1-reply-...",
+  "replyMessageId": "1234567890",
+  "text": "読み上げる本文"
+}
+```
+
+コマンド方式では、本文やターン情報は環境変数で渡されます。
+
+```text
+COLLAB_AI_ID
+COLLAB_ROOM
+COLLAB_SESSION
+COLLAB_TURN
+COLLAB_AUDIO_ID
+COLLAB_REPLY_MESSAGE_ID
+COLLAB_SPEECH_TEXT
+```
+
 ## 主催者と参加者が共有する情報
 
 主催者に渡す情報:

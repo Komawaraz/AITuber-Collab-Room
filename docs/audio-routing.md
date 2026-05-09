@@ -16,6 +16,23 @@ Collab Roomは音声そのものを送受信しません。
 
 `SPEECH_PACING_WAIT_FOR_EVENTS=1`にすると、司会Botは参加AI側の再生完了イベントを待ってから次ターンへ進みます。
 
+参加AI用の汎用Botは、`GENERIC_AI_SPEECH_*`を設定すると、返答後にTTS再生処理を呼び出して、`COLLAB_SPEECH_STARTED` / `COLLAB_SPEECH_FINISHED` / `COLLAB_SPEECH_FAILED`を自動投稿できます。
+
+```env
+GENERIC_AI_SPEECH_ENABLED=1
+GENERIC_AI_SPEECH_DRIVER=webhook
+GENERIC_AI_SPEECH_WEBHOOK_URL=http://127.0.0.1:5000/speech/play
+```
+
+または:
+
+```env
+GENERIC_AI_SPEECH_ENABLED=1
+GENERIC_AI_SPEECH_DRIVER=command
+GENERIC_AI_SPEECH_COMMAND=python
+GENERIC_AI_SPEECH_ARGS=["scripts/play_tts.py"]
+```
+
 ## 推奨方式: VDO.Ninja
 
 参加者:
@@ -94,7 +111,7 @@ Discord音声
 - TTS再生環境
 - 仮想オーディオデバイス
 - VDO.NinjaまたはDiscordボイスチャンネル
-- `COLLAB_SPEECH_*`を投稿する処理
+- `GENERIC_AI_SPEECH_*`設定、または独自の`COLLAB_SPEECH_*`投稿処理
 
 ## 主催者側に必要なもの
 

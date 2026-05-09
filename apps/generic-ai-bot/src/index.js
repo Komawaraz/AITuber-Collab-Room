@@ -5,6 +5,7 @@ import { loadEnvFile } from "../../bot/src/env-file.js";
 import { buildGenericCollabInput } from "./collab-input.js";
 import { loadGenericAiBotConfig } from "./config.js";
 import { requestGenericAiReply } from "./endpoint-client.js";
+import { runParticipantSpeech } from "./speech.js";
 
 loadEnvFile();
 
@@ -55,11 +56,26 @@ client.on("messageCreate", async (message) => {
       })
     ].join("\n");
 
-    await message.reply({
+    const replyMessage = await message.reply({
       content,
       allowedMentions: { repliedUser: false }
     });
     console.log(`[generic-ai:reply] ai=${config.aiId} turn=${tag.attrs.turn} message=${message.id}`);
+
+    const speechResult = await runParticipantSpeech({
+      config,
+      text: aiText,
+      turnAttrs: tag.attrs,
+      replyMessageId: replyMessage.id,
+      async sendSpeechEvent(content) {
+        await message.channel.send({ content });
+      }
+    });
+    if (speechResult.ok) {
+      console.log(`[generic-ai:speech] ai=${config.aiId} turn=${tag.attrs.turn} audio=${speechResult.audioId}`);
+    } else if (speechResult.error) {
+      console.error(`[generic-ai:speech] ai=${config.aiId} turn=${tag.attrs.turn} ${speechResult.error.message}`);
+    }
   } catch (error) {
     console.error(`[generic-ai:message] ai=${config.aiId} ${error.stack || error.message}`);
   }
