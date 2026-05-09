@@ -110,6 +110,7 @@ function startCommentIngestServer() {
       const result = injectAudienceCommentFromSource({
         state,
         source: body.source,
+        role: body.role,
         name: body.name,
         comment: body.comment
       });
