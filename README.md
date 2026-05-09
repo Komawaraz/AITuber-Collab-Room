@@ -193,6 +193,22 @@ CO_HOST_USER_IDS=222222222222222222,333333333333333333
 - `GENERIC_AI_ID`と`AI_PARTICIPANTS[].aiId`は一致させます
 - APIキーやSystem Promptは`AI_PARTICIPANTS`に入れません
 
+`alpha`や`beta`はサンプル名です。実際には自分のAIに合わせて置き換えてください。
+
+例:
+
+```text
+alpha -> alice_ai
+beta  -> bob_ai
+```
+
+この場合、コマンドも以下のように置き換えます。
+
+```text
+!collab turn alice_ai 今の部屋の状態を短く観測してください。
+!collab loop start alice_ai bob_ai 4 今日のテーマについて短く話す。
+```
+
 ## 起動
 
 司会Bot:
@@ -235,22 +251,115 @@ npm run generic:ai:check
 !collab resume
 ```
 
-例:
+### コマンドの読み方
+
+`<...>`は入力する値を表します。実際に入力するときは`<`と`>`は書きません。
+
+```text
+!collab turn <ai_id> <question>
+```
+
+例えば`ai_id`が`alpha`で、質問が`今の部屋の状態を短く観測してください。`なら、こう入力します。
 
 ```text
 !collab turn alpha 今の部屋の状態を短く観測してください。
 ```
 
-自動会話ループ:
+`ai_id`は`AI_PARTICIPANTS`に登録した`aiId`です。Discord表示名ではありません。
+
+### コマンド一覧
+
+| コマンド | 引数の順序 | 処理内容 |
+| --- | --- | --- |
+| `!collab status` | なし | 現在のセッション、トピック、停止状態、active turnを表示します。 |
+| `!collab turn <ai_id> <question>` | 1. 対象AI ID 2. 質問/指示 | 指定AIに1回だけターンを発行します。司会Botが`#collab-room`に`COLLAB_TURN`を投稿します。 |
+| `!collab next <question>` | 1. 質問/指示 | 直近の発言履歴と参加状況から、司会Botが次のAIを選んでターンを発行します。 |
+| `!collab suggest <instruction>` | 1. 司会判断への指示 | Codex司会補助が有効な場合、次の進行案を`#collab-control`に出します。ターンは発行しません。 |
+| `!collab proceed <instruction>` | 1. 司会判断への指示 | Codex司会補助が有効な場合、判断結果に従ってターンを発行します。 |
+| `!collab audience <name>: <comment>` | 1. 視聴者名 2. コメント | 模擬視聴者コメントを`#collab-room`へ投稿し、次回以降のAI文脈に含めます。 |
+| `!collab loop start <ai_id> <ai_id> <turns> <topic>` | 1. 先攻AI ID 2. 後攻AI ID 3. ターン数 4. テーマ | 2体のAIで自動会話ループを開始します。各返信後、司会Botが次のAIへ自動でターンを出します。 |
+| `!collab loop status` | なし | 自動会話ループの状態を表示します。 |
+| `!collab loop stop` | なし | 自動会話ループを停止します。 |
+| `!collab mute <ai_id>` | 1. 対象AI ID | 指定AIにターンが出ないようにします。 |
+| `!collab unmute <ai_id>` | 1. 対象AI ID | `mute`を解除します。 |
+| `!collab cancel <turn_id>` | 1. turn番号 | active turnをキャンセルします。 |
+| `!collab pause` | なし | 部屋全体を一時停止します。新しいターンは発行されません。 |
+| `!collab resume` | なし | 部屋全体の一時停止を解除します。 |
+
+### よく使う順序
+
+初回テストでは、以下の順序が分かりやすいです。
+
+1. 状態確認
 
 ```text
-!collab loop start alpha beta 4 静かな配信部屋で、温かい飲み物について短く話す。
+!collab status
 ```
 
-模擬視聴者コメント:
+2. 1体に単発ターンを出す
+
+```text
+!collab turn alpha 今の部屋の状態を短く観測してください。
+```
+
+処理の流れ:
+
+```text
+#collab-control にコマンドを書く
+司会Botが #collab-room に alpha 宛ての COLLAB_TURN を投稿
+alpha のGeneric AI Botが自分宛てのターンを読む
+Generic AI BotがAI Endpointへ文脈を送る
+Generic AI Botが #collab-room に COLLAB_REPLY を返す
+司会Botが返信を受理し、#collab-logs に記録する
+```
+
+3. 模擬視聴者コメントを入れる
 
 ```text
 !collab audience viewerA: 今日のテーマは何ですか？
+```
+
+このコメントは次の`COLLAB_TURN`の`Recent messages`に入ります。
+
+4. コメントを踏まえてAIにターンを出す
+
+```text
+!collab turn alpha 視聴者コメントに短く反応してください。
+```
+
+5. 2体の自動会話を試す
+
+```text
+!collab loop start alpha beta 4 今日のテーマについて短く話す。相手の直前の質問には先に答えてください。
+```
+
+この場合の引数は以下です。
+
+```text
+alpha = 最初に話すAI
+beta = 次に話すAI
+4 = 合計ターン数
+今日のテーマについて... = ループ全体のテーマ/指示
+```
+
+処理の流れ:
+
+```text
+turn 1 -> alpha
+alphaがCOLLAB_REPLY
+turn 2 -> beta
+betaがCOLLAB_REPLY
+turn 3 -> alpha
+alphaがCOLLAB_REPLY
+turn 4 -> beta
+betaがCOLLAB_REPLY
+Auto loop completed
+```
+
+途中で止める場合:
+
+```text
+!collab loop stop
 ```
 
 ## プロトコル
