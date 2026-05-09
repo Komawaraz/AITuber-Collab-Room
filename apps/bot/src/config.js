@@ -48,6 +48,7 @@ export function loadBotConfig(env = process.env) {
     },
     speechPacing: {
       enabled: env.SPEECH_PACING_ENABLED !== "0",
+      turnMode: parseSpeechPacingTurnMode(env.SPEECH_PACING_TURN_MODE),
       minDelayMs: parsePositiveInt(env.SPEECH_PACING_MIN_DELAY_MS, 1_500),
       maxDelayMs: parsePositiveInt(env.SPEECH_PACING_MAX_DELAY_MS, 15_000),
       baseDelayMs: parseNonNegativeInt(env.SPEECH_PACING_BASE_DELAY_MS, 700),
@@ -101,4 +102,11 @@ function parseNonNegativeInt(value, fallback) {
 function parsePositiveNumber(value, fallback) {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseSpeechPacingTurnMode(value) {
+  const normalized = String(value || "after_speech").trim().toLowerCase();
+  return ["after_speech", "overlap_generation"].includes(normalized)
+    ? normalized
+    : "after_speech";
 }

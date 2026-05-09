@@ -94,7 +94,21 @@ describe("bot role mapping", () => {
     assert.equal(loaded.participants[0].botId, "bot-alpha");
     assert.deepEqual(loaded.participants[0].forbiddenTopics, ["private prompt"]);
     assert.equal(loaded.speechPacing.enabled, true);
+    assert.equal(loaded.speechPacing.turnMode, "after_speech");
     assert.equal(loaded.speechPacing.minDelayMs, 1500);
+  });
+
+  it("loads overlap generation speech pacing mode", () => {
+    const loaded = loadBotConfig({
+      DISCORD_TOKEN: "token",
+      DISCORD_GUILD_ID: "guild",
+      COLLAB_ROOM_CHANNEL_ID: "room-channel",
+      CONTROL_CHANNEL_ID: "control-channel",
+      LOG_CHANNEL_ID: "log-channel",
+      SPEECH_PACING_TURN_MODE: "overlap_generation"
+    });
+
+    assert.equal(loaded.speechPacing.turnMode, "overlap_generation");
   });
 
   it("maps configured users to roles", () => {
@@ -328,6 +342,44 @@ describe("bot control commands", () => {
     assert.equal(state.activeTurn.aiId, "beta");
     assert.match(issued.roomMessage, /<@bot-beta>/);
     assert.equal(state.autoLoop.pendingTurn, undefined);
+  });
+
+  it("can issue the next loop turn while previous speech is still estimated to be playing", async () => {
+    const state = createInitialState({
+      ...config,
+      speechPacing: {
+        enabled: true,
+        turnMode: "overlap_generation",
+        minDelayMs: 2000,
+        maxDelayMs: 10000,
+        baseDelayMs: 500,
+        charsPerSecond: 10
+      }
+    });
+    await handleControlCommand({
+      state,
+      config,
+      moderator: ruleModerator,
+      authorId: "host-1",
+      content: "!collab loop start alpha beta 3 初回コラボ"
+    });
+
+    const accepted = handleRoomMessage({
+      state,
+      message: {
+        id: "m-overlap-1",
+        authorId: "bot-alpha",
+        authorName: "Alpha",
+        content: "これは少し長めの返答です。\n\n[COLLAB_REPLY room=default session=s1 turn=1 reply_to=turn-msg]"
+      }
+    });
+
+    assert.equal(accepted.kind, "auto_loop_turn");
+    assert.equal(state.activeTurn.aiId, "beta");
+    assert.equal(state.autoLoop.pendingTurn, undefined);
+    assert.match(state.autoLoop.speechReadyAt, /\d{4}-\d{2}-\d{2}T/);
+    assert.match(accepted.controlMessages.join("\n"), /issued beta immediately/);
+    assert.match(accepted.logMessages.join("\n"), /AUTO_LOOP_OVERLAP/);
   });
 
   it("scopes automatic loop context to messages created after the loop starts", async () => {

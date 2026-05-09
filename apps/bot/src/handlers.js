@@ -457,6 +457,26 @@ function maybeContinueLoop({ state, previousParticipant, previousMessageText, re
 
   const delayMs = estimateSpeechDelayMs(previousMessageText, state.speechPacing);
   if (delayMs > 0) {
+    if (state.speechPacing?.turnMode === "overlap_generation") {
+      state.autoLoop.speechReadyAt = estimateSpeechQueueReadyAt(state.autoLoop.speechReadyAt, delayMs);
+      const nextTurn = issueTurn({ state, ...pendingTurn });
+
+      if (nextTurn.kind !== "turn") {
+        state.autoLoop = null;
+        result.controlMessages.push(...(nextTurn.controlMessages || []), "Auto loop stopped.");
+        result.logMessages.push(...(nextTurn.logMessages || []), "AUTO_LOOP_STOPPED reason=issue_failed");
+        return result;
+      }
+
+      result.kind = "auto_loop_turn";
+      result.roomMessage = nextTurn.roomMessage;
+      result.controlMessages.push(...nextTurn.controlMessages);
+      result.controlMessages.push(`Auto loop issued ${nextAiId} immediately while estimated speech finishes at ${state.autoLoop.speechReadyAt}.`);
+      result.logMessages.push(...nextTurn.logMessages);
+      result.logMessages.push(`AUTO_LOOP_OVERLAP next=${nextAiId} delay_ms=${delayMs} speech_ready_at=${state.autoLoop.speechReadyAt}`);
+      return result;
+    }
+
     pendingTurn.readyAt = new Date(Date.now() + delayMs).toISOString();
     pendingTurn.delayMs = delayMs;
     state.autoLoop.pendingTurn = pendingTurn;
@@ -531,6 +551,13 @@ function estimateSpeechDelayMs(text, pacing = {}) {
   const charCount = Array.from(clean).length;
   const estimated = Math.ceil((pacing.baseDelayMs || 0) + (charCount / (pacing.charsPerSecond || 12)) * 1000);
   return Math.max(pacing.minDelayMs || 0, Math.min(pacing.maxDelayMs || estimated, estimated));
+}
+
+function estimateSpeechQueueReadyAt(currentReadyAt, delayMs) {
+  const now = Date.now();
+  const currentReadyTime = Date.parse(currentReadyAt || "");
+  const startTime = Number.isFinite(currentReadyTime) ? Math.max(now, currentReadyTime) : now;
+  return new Date(startTime + delayMs).toISOString();
 }
 
 function nextLoopParticipantId(participantIds, currentAiId) {

@@ -616,7 +616,7 @@ Twitchのコメントrole:
 
 Discord上のテキスト表示は、AIの思考・生成が終わった後に即時表示されます。一方で配信では、その後のTTSや音声再生に時間がかかります。
 
-このため、自動会話ループではAIの`COLLAB_REPLY`を受理しても、すぐ次のAIへターンを出しません。思考時間は待機計算に含めず、返信確定後の文字数から推定発話時間を計算し、その時間だけ待ってから次の`COLLAB_TURN`を発行します。
+このため、自動会話ループではAIの`COLLAB_REPLY`を受理した後、返信確定後の文字数から推定発話時間を計算します。既定では、その時間だけ待ってから次の`COLLAB_TURN`を発行します。思考時間は待機計算に含めません。
 
 ```text
 AI AのCOLLAB_REPLY
@@ -626,10 +626,24 @@ AI AのCOLLAB_REPLY
   -> AI BへCOLLAB_TURN
 ```
 
+遅いモデルを使う場合は、発話中に次AIの思考を開始させるモードも使えます。
+
+```text
+AI AのCOLLAB_REPLY
+  -> Discordにテキスト表示
+  -> 司会Botが返信を受理
+  -> 推定発話終了時刻を記録
+  -> すぐAI BへCOLLAB_TURN
+  -> AI Aの音声再生中にAI Bが思考・生成
+```
+
+このモードは配信上の無音を減らしやすい一方で、Discord上のテキスト進行が音声より先行します。TTS側で音声キューを順番に再生できる構成に向いています。
+
 設定:
 
 ```env
 SPEECH_PACING_ENABLED=1
+SPEECH_PACING_TURN_MODE=after_speech
 SPEECH_PACING_MIN_DELAY_MS=1500
 SPEECH_PACING_MAX_DELAY_MS=15000
 SPEECH_PACING_BASE_DELAY_MS=700
@@ -641,10 +655,21 @@ SPEECH_PACING_CHARS_PER_SECOND=12
 | 変数 | 意味 |
 | --- | --- |
 | `SPEECH_PACING_ENABLED` | `1`で有効、`0`で無効 |
+| `SPEECH_PACING_TURN_MODE` | `after_speech`なら発話推定終了後に次ターン、`overlap_generation`なら発話中に次AIの思考を開始 |
 | `SPEECH_PACING_MIN_DELAY_MS` | どれだけ短い返答でも最低限待つ時間 |
 | `SPEECH_PACING_MAX_DELAY_MS` | 長文でも最大で待つ時間 |
 | `SPEECH_PACING_BASE_DELAY_MS` | TTS開始や配信反映の余白 |
 | `SPEECH_PACING_CHARS_PER_SECOND` | 1秒あたり何文字読む想定か |
+
+推奨:
+
+```env
+# 音声被りを最も避けたい場合
+SPEECH_PACING_TURN_MODE=after_speech
+
+# 遅いモデルで無音を減らしたい場合
+SPEECH_PACING_TURN_MODE=overlap_generation
+```
 
 待機中に手動で`!collab turn`や`!collab next`を実行すると、発話被り防止のため拒否されます。割り込む場合は先に以下で自動ループを止めます。
 
