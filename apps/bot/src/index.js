@@ -5,6 +5,7 @@ import { acquireProcessLock } from "../../../packages/runtime-lock/src/index.js"
 import { loadBotConfig } from "./config.js";
 import { createModerator } from "./moderator.js";
 import { loadEnvFile } from "./env-file.js";
+import { createEventQueue } from "./event-queue.js";
 import {
   handleControlCommand,
   handlePendingAutoTurn,
@@ -21,6 +22,11 @@ const config = loadBotConfig();
 const store = openSqliteStore(config.dbPath);
 const state = createInitialState(config, store.loadStateSnapshot());
 const moderator = createModerator(config.moderator);
+const eventQueue = createEventQueue({
+  onError(error, event) {
+    console.error(`[bot:event:${event.name}] ${error.stack || error.message}`);
+  }
+});
 
 const client = new Client({
   intents: [
@@ -63,22 +69,26 @@ client.on("messageCreate", async (message) => {
     const normalized = normalizeDiscordMessage(message);
 
     if (message.channelId === config.channels.control) {
-      const result = await handleControlCommand({
-        state,
-        config,
-        moderator,
-        authorId: message.author.id,
-        content: message.content
+      await eventQueue.enqueue("discord.control", async () => {
+        const result = await handleControlCommand({
+          state,
+          config,
+          moderator,
+          authorId: message.author.id,
+          content: message.content
+        });
+        if (result) {
+          await publishResult(result);
+        }
       });
-      if (result) {
-        await publishResult(result);
-      }
       return;
     }
 
     if (message.channelId === config.channels.room) {
-      const result = handleRoomMessage({ state, message: normalized });
-      await publishResult(result);
+      await eventQueue.enqueue("discord.room", async () => {
+        const result = handleRoomMessage({ state, message: normalized });
+        await publishResult(result);
+      });
     }
   } catch (error) {
     console.error(`[bot:message] ${error.stack || error.message}`);
@@ -107,14 +117,17 @@ function startCommentIngestServer() {
       }
 
       const body = await readJsonBody(request, 16_384);
-      const result = injectAudienceCommentFromSource({
-        state,
-        source: body.source,
-        role: body.role,
-        name: body.name,
-        comment: body.comment
+      const result = await eventQueue.enqueue("http.audience", async () => {
+        const queuedResult = injectAudienceCommentFromSource({
+          state,
+          source: body.source,
+          role: body.role,
+          name: body.name,
+          comment: body.comment
+        });
+        await publishResult(queuedResult);
+        return queuedResult;
       });
-      await publishResult(result);
       sendJson(response, 200, { ok: true, kind: result.kind });
     } catch (error) {
       console.error(`[bot:comment-ingest] ${error.stack || error.message}`);
@@ -198,8 +211,14 @@ function scheduleTurnTimeout(turnId, timeoutMs) {
 
   const handle = setTimeout(async () => {
     timeoutHandles.delete(turnId);
-    const result = handleTurnTimeout({ state, turnId });
-    await publishResult(result);
+    try {
+      await eventQueue.enqueue("timer.turn-timeout", async () => {
+        const result = handleTurnTimeout({ state, turnId });
+        await publishResult(result);
+      });
+    } catch {
+      // createEventQueue logs the underlying error.
+    }
   }, timeoutMs);
 
   timeoutHandles.set(turnId, handle);
@@ -213,8 +232,14 @@ function schedulePendingAutoTurn(pendingTurnId, delayMs) {
 
   const handle = setTimeout(async () => {
     pendingAutoTurnHandles.delete(pendingTurnId);
-    const result = handlePendingAutoTurn({ state, pendingTurnId });
-    await publishResult(result);
+    try {
+      await eventQueue.enqueue("timer.pending-auto-turn", async () => {
+        const result = handlePendingAutoTurn({ state, pendingTurnId });
+        await publishResult(result);
+      });
+    } catch {
+      // createEventQueue logs the underlying error.
+    }
   }, Math.max(0, delayMs));
 
   pendingAutoTurnHandles.set(pendingTurnId, handle);

@@ -44,6 +44,20 @@ AI Endpoint
   OpenAI互換API または Webhook
 ```
 
+## イベント処理
+
+司会Botはインメモリの直列イベントキューで、Discordイベント、外部コメント、timeout処理を1件ずつ処理します。
+
+対象:
+
+- Discord control message
+- Discord room message
+- HTTP `/audience` からの外部コメント
+- turn timeout
+- auto-loop pending turn
+
+このキューは、同時イベントによる状態更新の競合を避けるためのものです。永続ジョブキューではないため、Botプロセス終了時に未処理イベントを再実行する保証はありません。詳細は [docs/event-queue-notes.md](docs/event-queue-notes.md) を参照してください。
+
 ## ディレクトリ
 
 ```text
@@ -59,6 +73,7 @@ packages/
   runtime-lock/     多重起動防止
 docs/
   aituber-collab-room-mvp.md
+  event-queue-notes.md
 test/
 ```
 
