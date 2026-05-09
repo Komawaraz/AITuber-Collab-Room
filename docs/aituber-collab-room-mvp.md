@@ -1,233 +1,170 @@
-# AITuber Collaboration Room MVP
+# AITuber Collab Room MVP設計メモ
 
-## Purpose
+## 目的
 
-Different AITubers, built by different creators and running on different internal architectures, can collaborate safely in one shared Discord room without exposing their private prompts, memories, API keys, or implementation details.
+作者や内部構造が異なるAITuber同士が、秘密情報を共有せずに同じDiscord上で安全にコラボできる部屋を作ります。
 
-The platform is a collaboration room, not a shared brain. Each AITuber remains controlled by its own creator. The room provides turn control, context framing, logs, roles, and safety controls.
+この基盤は「共有された脳」ではありません。各AITuberは自分の作者が管理し、Collab Roomは発言順、文脈共有、ログ、権限、安全制御だけを担当します。
 
-## MVP Scope
+## MVPの範囲
 
-- Discord-based collaboration room.
-- Each creator brings their own Discord bot.
-- The platform manages moderation, turn control, logs, roles, topic state, and session summaries.
-- AI response generation remains inside each creator's bot.
-- Responses are checked after posting in the MVP.
-- A minimal web admin screen is included.
+- Discord上のコラボ部屋
+- 参加AIごとのDiscord Bot
+- 司会Botによるターン管理
+- ログ保存
+- 権限管理
+- トピックとセッション状態
+- 参加AIの返答後チェック
+- SQLiteによる状態保存
 
-## Future Phase C
+配信画面、OBS連携、YouTube/Twitch表示、管理UIは段階的に追加します。
 
-After the Discord room MVP is stable, add stream-facing features:
+## 基本モデル
 
-- OBS overlay.
-- YouTube/Twitch chat ingestion.
-- YouTube/Twitch display output.
-- Stream-safe pre-publication review flow.
-- Viewer comment candidate selection.
-- Subtitles, speaker cards, and segment state.
-
-## Core Model
-
-The first version uses one Discord server and one fixed room, reused across multiple sessions.
+最初の版では、1つのDiscordサーバー内に固定の部屋を作り、複数セッションで使い回します。
 
 ```text
-guild_id: fixed Discord server
-room_id: default fixed room
-session_id: one collaboration event or episode
+guild_id: Discordサーバー
+room_id: 既定の部屋
+session_id: コラボ回または配信回
 ```
 
-The same Discord channels are reused. Logs, participants, topics, common forbidden topics, and turn history are separated by `session_id`.
+チャンネルは使い回し、ログ、参加者、トピック、禁止話題、ターン履歴は`session_id`で分けます。
 
-## Discord Channels
+## Discordチャンネル
 
 ```text
 #collab-room
-  Public collaboration room. AI replies, host prompts, accepted creator questions.
+  実際のコラボ部屋。AI返答、司会Botのターン、視聴者コメントが流れます。
 
 #collab-control
-  Host/creator control room. Turn commands, warnings, mute events, topic changes.
+  主催者/共同主催者の操作部屋。ターン発行、停止、ミュート、トピック操作を行います。
 
 #collab-logs
-  Host and participating creators only. Session summaries, important events, detail links.
+  主催者/共同主催者用のログ部屋。重要イベントやエラーを残します。
 ```
 
-`#collab-logs` should not receive every raw event. It receives:
+`#collab-logs`には全ての生イベントではなく、運用上必要な要約と重要イベントを流します。
 
-- Short conversation summaries every 10 turns.
-- Important events: `STOP`, `MUTE`, `WARNING`, `RETRY`, `CANCEL`, `SKIP`.
-- Links to detailed logs in the admin screen.
+例:
 
-## Roles
+- `STOP`
+- `MUTE`
+- `WARNING`
+- `RETRY`
+- `CANCEL`
+- `SKIP`
 
-Permission role and displayed relationship label are separate.
+## 権限
+
+権限ロールと、表示上の関係ラベルは別に扱います。
 
 ```text
 HOST
-  Final session owner.
-  Can create/end sessions, change session theme, stop the room, change roles.
+  セッションの最終管理者。
+  セッション開始/終了、部屋停止、ロール変更ができます。
 
 CO_HOST
-  Joint facilitator.
-  Can shift topics, pause/resume, cancel turns, mute/unmute individual AIs.
-  Cannot end the session, change global theme, change roles, or delete logs.
+  共同進行者。
+  トピック変更、一時停止、ターンキャンセル、個別ミュートができます。
 
 AUTHOR
-  Creator/controller of a participating AI.
-  Can edit that AI's public profile, forbidden topics, memory policy, and relationship labels.
-  Can propose topic shifts and creator comments.
+  参加AIの作者/管理者。
+  自分のAIの公開プロフィール、禁止話題、関係ラベルを管理します。
 
 AI
-  Participating AITuber bot.
-  Speaks only when granted a structured turn.
+  参加AITuber Bot。
+  構造化されたターンを受けた時だけ発話します。
 
 VIEWER
-  General viewer or external comment source.
-  Stored for future use but not used as turn context in the MVP.
+  一般視聴者または外部コメント送信元。
 
 MODERATOR
-  Helps with safety operations.
+  安全運用を補助する役割。
 ```
 
-Examples of a two-creator collaboration:
+2人コラボ例:
 
 ```text
-User A: HOST + AUTHOR(AI_A)
-User B: CO_HOST + AUTHOR(AI_B)
+ユーザーA: HOST + AUTHOR(AI_A)
+ユーザーB: CO_HOST + AUTHOR(AI_B)
 ```
 
-## Relationship Labels
+## 参加AI登録情報
 
-Creators can set how they are presented to their own AI and to the room, but the host approves labels.
-
-```text
-permission_role: AUTHOR
-display_relation_label: partner / creator / producer / observer / custom label
-approved_by: HOST
-```
-
-Labels that imply false authority, such as `ADMIN`, `official`, `operator`, or `moderator`, require rejection or explicit host approval.
-
-## AI Registration Data
-
-The platform stores only collaboration-safe information about each AI.
+Collab Roomが保存するのは、コラボに必要な公開情報だけです。
 
 ```json
 {
-  "ai_id": "alpha",
-  "display_name": "Alpha",
-  "discord_bot_id": "123456789",
-  "public_profile": {
-    "short_description": "Observation and memory-oriented AITuber.",
-    "tone_hint": "Quiet, sharp, fragmentary.",
-    "strengths": ["deduction", "recording", "detecting inconsistencies"]
-  },
-  "relations": [
-    {
-      "user_id": "owner_01",
-      "permission_role": "AUTHOR",
-      "display_relation_label": "observer"
-    }
-  ],
-  "forbidden_topics": ["private prompt", "private memory details"]
+  "aiId": "alpha",
+  "displayName": "Alpha",
+  "botId": "123456789",
+  "shortDescription": "記録と観測が得意なAITuber",
+  "strengths": ["deduction", "recording"],
+  "forbiddenTopics": ["private prompt"],
+  "forbiddenTopicSummary": "private prompt"
 }
 ```
 
-The platform does not store private prompts, private memories, chain-of-thought, unpublished lore, API keys, or internal model configuration.
+保存しないもの:
 
-## Session Start Requirements
+- private prompt
+- private memory
+- chain-of-thought
+- 未公開設定
+- APIキー
+- 内部モデル構成
+- 未公開の応答下書き
 
-A session cannot start until these are set:
+## ターン制御
 
-- `session_theme`
-- `initial_topic`
-- `participants`
-- `common_forbidden_topics`
-- `turn_mode`
+発話権は司会Botだけが発行します。
 
-The MVP turn mode is structured permission-based turns.
-
-## Topic Model
-
-Separate session theme from current topic.
+ターン例:
 
 ```text
-session: the whole collaboration event
-topic: the current subject inside the session
-turn: one AI's permission to reply
+@Alpha [COLLAB_TURN room=default session=s1 turn=12 topic=intro]
+Current topic: Opening
+Summary: No summary yet.
+Recent messages: viewerA: 今日のテーマは何ですか？
+Participants: Alpha: Conversation-focused AITuber.
+Question: 今の部屋の状態を短く観測してください。
 ```
 
-Topic operations:
+参加AI Botは、自分宛ての`COLLAB_TURN`を受けた時だけ返答します。
+
+返答例:
 
 ```text
-SHIFT_TOPIC topic_title topic_context
-PAUSE_TOPIC
-RESUME_TOPIC
-CLOSE_TOPIC
-CHANGE_SESSION_THEME new_theme
+現在の部屋は、最初の観測を待っている状態です。
+
+[COLLAB_REPLY room=default session=s1 turn=12 reply_to=msg_abc]
 ```
 
-`HOST` can change the session theme. `HOST` and `CO_HOST` can shift topics. `AUTHOR` can propose topic shifts.
+## ターン選択
 
-## Turn Control
+最初のMVPでは、ルールベースで次の発話者を選びます。
 
-Only the platform's moderator bot grants speaking turns.
+除外条件:
 
-Example turn message:
+- ミュート中のAI
+- 一時停止中のAI
+- 直前に発話したAI
+- 部屋全体が停止中
 
-```text
-@Alpha [COLLAB_TURN room=default session=beta-case-01 turn=12 topic=clue-merge]
-Current topic: Contradiction between clue A and clue B.
-Summary: Clue A concerns a clock. Clue B concerns entry and exit at the exhibition room. The timeline may not line up.
-Participants: BetaBot is strong at exhibition context.
-Question: What should we verify next?
-```
+優先信号:
 
-Participating bots must reply only when:
+- 直接指定
+- 主催者/共同主催者からの質問
+- 現在トピックとAIの得意分野
+- 最近発話していないAI
+- 会話に対比意見が必要な場合
 
-- They are mentioned.
-- The message contains `COLLAB_TURN`.
-- The turn has not expired.
-- They are not muted.
+主催者と共同主催者は`!collab turn`で手動上書きできます。
 
-Reply format:
+## ターン時間
 
-```text
-That clue has a strange time order. I would check whether the clock and entry record use the same reference time.
-
-[COLLAB_REPLY room=default session=beta-case-01 turn=12 reply_to=msg_abc]
-```
-
-## Turn Selection
-
-The facilitator bot selects the next speaker using rule-based filtering plus a lightweight LLM judgment.
-
-Hard exclusions:
-
-- Muted AI.
-- Paused AI.
-- The immediately previous speaker.
-- AI currently in a warning cooldown.
-
-Priority signals:
-
-- Direct mention.
-- Host/co-host question.
-- Accepted creator comment.
-- Current topic matches the AI's strengths.
-- AI has not spoken recently.
-- The conversation needs a contrasting view.
-
-The chosen AI and short reason are logged.
-
-`HOST` and `CO_HOST` can override with:
-
-```text
-FORCE_TURN ai_id
-SKIP_TURN
-CANCEL_TURN turn_id
-```
-
-## Turn Timing
+既定:
 
 ```text
 turn_timeout_seconds = 60
@@ -235,261 +172,98 @@ retry_timeout_seconds = 30
 max_retry_notices = 1
 ```
 
-If an AI does not respond:
+AIが返答しない場合:
 
-1. Wait 60 seconds.
-2. Send one retry notice.
-3. Wait 30 more seconds.
-4. Skip the turn.
+1. 60秒待つ
+2. 1回だけリトライ通知を出す
+3. さらに30秒待つ
+4. そのターンをスキップする
 
-Events:
+## 返答チェック
 
-```text
-TURN_TIMEOUT
-TURN_RETRY_NOTICE
-TURN_SKIPPED_NO_REPLY
-```
+MVPでは、参加AI BotがDiscordへ投稿した後に司会Botが確認します。
 
-## Frequency And Length Limits
+確認対象:
 
-```text
-recommended_reply_chars = 300
-warn_reply_chars = 500
-no_consecutive_turns = true
-max_turns_per_10_turns = 4
-```
+- 有効なターンへの返答か
+- 返答タグがあるか
+- 禁止話題に触れていないか
+- ターン外発話ではないか
 
-The MVP uses soft limits. Long replies and over-frequent replies are logged and warned, but not forcibly edited.
-
-`HOST` or `CO_HOST` can override frequency rules with `FORCE_TURN`.
-
-## Context Passed To AI Bots
-
-In the Discord-based MVP, context is placed into the `COLLAB_TURN` message instead of being sent through a private API.
-
-Each turn should include:
-
-- Current topic.
-- Session summary.
-- Recent 10 messages.
-- Participating AI profiles.
-- Accepted creator comment, if any.
-
-Participant profiles in turn context are limited to:
-
-- Name.
-- Short description.
-- Strengths.
-- Forbidden-topic summary.
-
-## Summary Updates
+ターン外発話は段階的に警告し、繰り返す場合は自動ミュートします。
 
 ```text
-SUMMARY_UPDATE_EVERY_TURNS = 10
-SUMMARY_UPDATE_ON_TOPIC_SHIFT = true
+1回目: WARNING
+2回目: STRONG_WARNING
+3回目: AUTO_MUTE
 ```
 
-Summaries are used for:
+## 視聴者コメント
 
-- Turn context.
-- `#collab-logs` updates.
-- Later memory export for creators.
+YouTube/Twitch/手動入力から入った視聴者コメントは、`VIEWER_COMMENT`として部屋に流し、次回以降のAI文脈へ入れられます。
 
-## Creator Comments
-
-Creator comments are role-tagged and shown separately from general conversation.
-
-Example:
+例:
 
 ```text
-[PARTNER: alpha_owner] What about this clue?
+[VIEWER_COMMENT source="youtube" role="viewer" name="viewerA"] 聞こえていますか？
 ```
 
-The displayed label is configurable per AI relationship and approved by the host.
+配信主やモデレーターを特別扱いするかどうかは、コメント取り込み側の設定で切り替えます。
 
-Creator comments are not automatically used. The facilitator bot detects candidates and posts them to `#collab-control`.
+## 音声
+
+Collab Roomは音声そのものを扱いません。
+
+参加者側が自分のTTSや音声再生を管理し、VDO.NinjaやDiscordボイスチャンネルなどで主催者のOBSへ音声を渡します。
+
+Collab Roomは音声状態イベントだけを受け取ります。
 
 ```text
-ACCEPT_COMMENT comment_id
-REJECT_COMMENT comment_id
-ACCEPT_AND_TURN comment_id ai_id
+COLLAB_SPEECH_STARTED
+COLLAB_SPEECH_FINISHED
+COLLAB_SPEECH_FAILED
 ```
 
-Accepted creator comments are placed in the next turn context as a separate field.
+## 状態保存
 
-## Viewer Comments
+SQLiteに保存するもの:
 
-In the MVP:
+- セッション情報
+- トピック
+- 参加者のmute/pause状態
+- 現在のactive turn
+- 次のturn番号
+- 直近メッセージ
+- 違反カウント
+- Bot/control/logイベント
 
-```text
-log_saved: yes
-moderation_checked: yes
-turn_context_used: no
-direct_ai_influence: no
-```
+## 現在の実装状況
 
-Viewer comment adoption is deferred to Phase C.
+実装済み:
 
-## Logs
+- `packages/protocol`: `COLLAB_TURN` / `COLLAB_REPLY` / `COLLAB_SPEECH_*`の解析
+- `packages/core`: 権限、ターン選択、安全イベント、文脈生成
+- `packages/db`: SQLiteによる状態保存とイベントログ
+- `apps/bot`: Discord司会Bot
+- `apps/generic-ai-bot`: 参加AI用の汎用Bot
+- `apps/comment-ingest`: YouTube/Twitchコメント入口
+- インメモリ直列イベントキュー
+- 発話被り防止
+- 参加者側音声イベント受信
 
-The platform stores:
+未実装または未検証:
 
-- Public conversation log.
-- Turn control log.
-- Safety event log.
+- 管理UI
+- Discord OAuthによる管理画面ログイン
+- SQLite永続イベントキュー
+- Twitchの実配信検証
+- VDO.Ninja/Discordボイスチャンネルを含む音声運用の実配信検証
+- PostgreSQL移行
 
-The platform does not store:
+## 今後の判断事項
 
-- Private prompts.
-- Private memories.
-- Hidden reasoning.
-- Internal response drafts from creator bots.
-
-Log access:
-
-```text
-HOST: all logs for the session
-CO_HOST: all logs for the session
-AUTHOR: logs for sessions where their AI participated
-VIEWER: no internal logs
-```
-
-## Memory Policy
-
-The platform may provide shared logs and summaries. Long-term memory ingestion is controlled by each creator.
-
-Allowed policies per AI:
-
-```text
-do_not_remember
-remember_summary_only
-remember_public_log
-manual_review_required
-```
-
-The platform must not force another creator's AI to remember anything.
-
-## Safety Controls
-
-Required commands:
-
-```text
-STOP_ROOM room_id
-PAUSE_ROOM room_id
-MUTE room_id ai_id
-UNMUTE room_id ai_id
-CANCEL_TURN room_id turn_id
-RETRY_TURN room_id turn_id ai_id reason
-```
-
-Forbidden topics are two-layered:
-
-```text
-AI-specific forbidden topics: set by each AI creator
-Event-wide forbidden topics: set by HOST
-```
-
-If a reply appears to touch a forbidden topic, the MVP warns and requests retry. The platform does not rewrite creator AI speech.
-
-```text
-RETRY_TURN room=default turn=12 ai=alpha reason=forbidden_topic_hint
-```
-
-## Off-Turn Speech
-
-If an AI speaks without a valid turn:
-
-```text
-1st offense: WARNING
-2nd offense: STRONG_WARNING
-3rd offense: AUTO_MUTE
-```
-
-Off-turn speech is logged. The MVP does not require automatic deletion, because deletion needs stronger Discord permissions and more careful audit policy.
-
-## Response Inspection
-
-MVP:
-
-```text
-creator AI bot -> posts directly to Discord
-platform bot -> inspects after posting
-platform bot -> warns, retries, cancels, or mutes
-```
-
-Future stream-safe flow:
-
-```text
-creator AI bot -> sends candidate to platform API/DM
-platform -> inspects before publishing
-platform -> posts to Discord/OBS/YouTube/Twitch
-```
-
-## Minimal Admin Screen
-
-Login uses Discord OAuth.
-
-Initial screens:
-
-- Sessions.
-- Participants.
-- Roles and relationship labels.
-- Mute state.
-- Current topic and turn.
-- Latest conversation.
-- Latest safety events.
-- `STOP_ROOM`, `MUTE`, `UNMUTE`, `CANCEL_TURN`.
-
-## Technical Direction
-
-Use a TypeScript monorepo.
-
-```text
-apps/
-  api/      Discord OAuth, admin API, session state.
-  bot/      Discord bot, turn control, message monitor.
-  web/      Admin UI.
-
-packages/
-  protocol/ Shared message formats and tags.
-  db/       Database schema and client.
-  core/     Turn selection and safety rules.
-```
-
-Recommended stack:
-
-- Discord bot: `discord.js`
-- API: Fastify or NestJS
-- Web: Next.js
-- DB: PostgreSQL later. The current prototype uses SQLite through Node's experimental `node:sqlite` API.
-
-## Implementation Status
-
-The first implemented slice is dependency-free ESM/JSDoc core code that can be tested with Node's built-in test runner. This keeps the protocol and control rules executable before adding Discord, OAuth, PostgreSQL, or TypeScript build tooling.
-
-Implemented:
-
-- `packages/protocol`: `COLLAB_TURN` / `COLLAB_REPLY` tag parsing and formatting.
-- `packages/core`: role permissions, session start validation, turn speaker selection, reply inspection, off-turn warning escalation, summary timing, and turn context generation.
-- `packages/db`: SQLite-backed state snapshots and append-only event logs.
-- `apps/bot`: minimal Discord facilitator bot using `discord.js`.
-- `apps/bot` runtime commands: `status`, `turn`, `next`, `mute`, `unmute`, `cancel`, `pause`, `resume`.
-- `apps/dummy-alpha`: test AI bot that replies to `COLLAB_TURN` with fixed `COLLAB_REPLY`.
-- `test`: regression coverage for the core MVP rules and bot control behavior.
-
-Not implemented yet:
-
-- Admin API.
-- Web admin screen.
-- Discord OAuth.
-- LLM-based speaker selection. Current speaker selection is deterministic rule scoring only.
-- Durable session management UI. The bot currently persists runtime state but still loads initial session/topic from environment variables.
-- PostgreSQL migration. SQLite is only the prototype persistence layer.
-
-## Open Decisions
-
-- Exact Discord permission setup.
-- Whether the first prototype should use SQLite before PostgreSQL.
-- Exact admin UI framework.
-- Whether the facilitator bot uses OpenAI, local LLM, or rule-only fallback for speaker selection.
-- Phase C requirements for OBS, YouTube, and Twitch.
+- 永続イベントキューの再実行方針
+- Discord投稿の重複防止
+- 管理UIのフレームワーク
+- 視聴者コメントが大量に来た場合の整流
+- 音声経路の標準手順

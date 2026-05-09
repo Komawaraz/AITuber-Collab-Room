@@ -1,38 +1,40 @@
-# Event Queue Notes
+# イベントキューメモ
 
-## Current Decision
+## 現在の決定
 
-Use an in-memory serial event queue for the current alpha.
+現在のアルファ版では、インメモリの直列イベントキューを使います。
 
-Events entering the facilitator bot should be processed one at a time:
+司会Botに入ってくる以下のイベントは、1件ずつ順番に処理します。
 
-- Discord control messages
-- Discord room messages
-- external audience comments from HTTP `/audience`
-- turn timeout timers
-- pending auto-loop timers
+- Discordの操作チャンネルのメッセージ
+- Discordのコラボ部屋のメッセージ
+- HTTP `/audience` から入る外部視聴者コメント
+- ターンのタイムアウト
+- 自動会話ループの予約ターン
 
-The goal is to prevent concurrent mutation of shared room state.
+目的は、共有している部屋状態を複数イベントが同時に変更することを防ぐことです。
 
-## Current Scope
+## 現在の範囲
 
-This is not a durable job queue.
+これは永続ジョブキューではありません。
 
-The queue guarantees ordering only while the facilitator bot process is running.
-Existing SQLite event logs and state snapshots still provide observability and basic restart state, but unprocessed queued work is not replayed after process exit.
+キューが順序を保証するのは、司会Botプロセスが動いている間だけです。既存のSQLiteイベントログと状態スナップショットにより、観測性と基本的な再起動時の状態復元はできます。ただし、プロセス終了時点で未処理だったキュー内イベントは再実行されません。
 
-## Deferred Durable Queue
+## 後回しにしている永続キュー
 
-A later production-oriented version may add a SQLite-backed queue with:
+将来の本番向け実装では、SQLite backed queueを追加できます。
+
+状態例:
 
 - `queued`
 - `processing`
 - `done`
 - `failed`
 
-That version should also handle idempotency for Discord sends. Without idempotency, replaying queued events after restart can duplicate room messages.
+この段階では、Discord投稿の冪等性も扱う必要があります。冪等性がないまま再起動後にイベントを再実行すると、コラボ部屋へ同じメッセージを重複投稿する可能性があります。
 
-## Reason
+## 理由
 
-The current MVP needs state serialization more than restart replay.
-Adding durable replay now would expand the design into message deduplication, delivery tracking, and failure recovery. Those are important, but they are separate from the first useful slice.
+現在のMVPでは、再起動後の完全な再実行よりも、まず状態更新を直列化することが重要です。
+
+永続再実行まで一気に入れると、メッセージ重複防止、配送状態の追跡、失敗時の復旧まで設計が広がります。それらは重要ですが、最初の有効な実装とは別の段階で扱います。
