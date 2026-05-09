@@ -145,7 +145,8 @@ Send Messages
 cp .env.example .env
 ```
 
-`.env`はGit管理対象外です。APIキーやBot Tokenを入れてもGitHubには送られません。
+`.env`は`.gitignore`で除外されています。通常の`git add`ではGitHubに送られません。
+ただし、`.env.example`、README、コード中に実TokenやAPIキーを書かないでください。
 
 ### 司会Bot用
 
@@ -536,7 +537,7 @@ COLLAB_DB_PATH=data/collab-room.sqlite
 
 ## 注意
 
-- `.env`はGit管理対象外です
-- `.env.example`には実トークンを書かないでください
+- `.env`は`.gitignore`で除外されていますが、`git add -f`などで強制追加しないでください
+- `.env.example`、README、コード中に実TokenやAPIキーを書かないでください
 - 参加AI Bot TokenやAPI KeyをHostへ渡す運用は、信頼できる相手に限定してください
 - 公開サーバーで使う前に、禁止トピック、ミュート、ログ閲覧権限を確認してください
