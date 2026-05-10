@@ -293,6 +293,52 @@ describe("bot control commands", () => {
     assert.match(continued.roomMessage, /<@bot-beta>/);
   });
 
+  it("continues an automatic conversation loop until a participant marks the end", async () => {
+    const state = createInitialState(config);
+    const started = await handleControlCommand({
+      state,
+      config,
+      moderator: ruleModerator,
+      authorId: "host-1",
+      content: "!collab loop start alpha beta until_end 好きな飲み物について短く雑談"
+    });
+
+    assert.equal(started.kind, "turn");
+    assert.equal(state.autoLoop.mode, "until_end");
+    assert.equal(state.autoLoop.remainingTurns, null);
+    assert.equal(state.autoLoop.maxTurns, 30);
+    assert.match(started.roomMessage, /\[COLLAB_END\]/);
+
+    const continued = handleRoomMessage({
+      state,
+      message: {
+        id: "m-until-end-1",
+        authorId: "bot-alpha",
+        authorName: "Alpha",
+        content: "緑茶が好きです。Betaはどうですか？\n\n[COLLAB_REPLY room=default session=s1 turn=1 reply_to=turn-msg]"
+      }
+    });
+
+    assert.equal(continued.kind, "auto_loop_turn");
+    assert.equal(state.activeTurn.aiId, "beta");
+    assert.equal(state.autoLoop.completedTurns, 1);
+    assert.match(continued.roomMessage, /\[COLLAB_END\]/);
+
+    const completed = handleRoomMessage({
+      state,
+      message: {
+        id: "m-until-end-2",
+        authorId: "bot-beta",
+        authorName: "Beta",
+        content: "私は水で十分です。ここで一度締めましょう。\n\n[COLLAB_REPLY room=default session=s1 turn=2 reply_to=turn-msg]\n[COLLAB_END]"
+      }
+    });
+
+    assert.equal(completed.kind, "reply_ok");
+    assert.equal(state.autoLoop, null);
+    assert.match(completed.controlMessages.join("\n"), /participant marked conversation end/);
+  });
+
   it("waits for estimated speech duration before issuing the next loop turn", async () => {
     const state = createInitialState({
       ...config,

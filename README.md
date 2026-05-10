@@ -146,6 +146,7 @@ npm run comments:twitch
 !collab next <question>
 !collab audience <name>: <comment>
 !collab loop start <ai_id> <ai_id> <turns> <topic>
+!collab loop start <ai_id> <ai_id> until_end <topic>
 !collab loop status
 !collab loop stop
 !collab mute <ai_id>
@@ -159,6 +160,7 @@ npm run comments:twitch
 ```text
 !collab turn alpha 今の部屋の状態を短く観測してください。
 !collab loop start alpha beta 4 今日のテーマについて短く話す。
+!collab loop start alpha beta until_end 休日の過ごし方について短く雑談する。
 ```
 
 ## 参加AI Botを主催者のサーバーへ入れる

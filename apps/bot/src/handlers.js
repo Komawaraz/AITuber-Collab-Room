@@ -15,6 +15,8 @@ import {
 } from "./state.js";
 
 const COMMAND_PREFIX = "!collab";
+const AUTO_LOOP_UNTIL_END_MAX_TURNS = 30;
+const COLLAB_END_MARKER = "[COLLAB_END]";
 
 export function roleForUser(config, userId) {
   if (config.hostUserIds.includes(userId)) {
@@ -389,11 +391,11 @@ function handleLoopCommand({ state, args }) {
     }
     if (state.autoLoop.pendingTurn) {
       return controlResult(
-        `Auto loop waiting: next=${state.autoLoop.pendingTurn.aiId} remaining=${state.autoLoop.remainingTurns} readyAt=${state.autoLoop.pendingTurn.readyAt || "unknown"} topic=${state.autoLoop.topic}`
+        `Auto loop waiting: next=${state.autoLoop.pendingTurn.aiId} ${formatLoopProgress(state.autoLoop)} readyAt=${state.autoLoop.pendingTurn.readyAt || "unknown"} topic=${state.autoLoop.topic}`
       );
     }
     return controlResult(
-      `Auto loop active: participants=${state.autoLoop.participantIds.join(",")} remaining=${state.autoLoop.remainingTurns} topic=${state.autoLoop.topic}`
+      `Auto loop active: participants=${state.autoLoop.participantIds.join(",")} ${formatLoopProgress(state.autoLoop)} topic=${state.autoLoop.topic}`
     );
   }
 
@@ -403,7 +405,7 @@ function handleLoopCommand({ state, args }) {
   }
 
   if (subcommand !== "start") {
-    return controlResult("Usage: !collab loop start <ai_id> <ai_id> <turns> <topic>");
+    return controlResult("Usage: !collab loop start <ai_id> <ai_id> <turns|until_end> <topic>");
   }
 
   if (state.activeTurn) {
@@ -415,17 +417,21 @@ function handleLoopCommand({ state, args }) {
 
   const firstAiId = args.shift();
   const secondAiId = args.shift();
-  const turns = Math.min(12, Math.max(1, Number.parseInt(args.shift(), 10) || 4));
+  const loopLengthArg = args.shift();
+  const loopPlan = parseLoopPlan(loopLengthArg);
   const topic = args.join(" ").trim() || "疑似コラボ配信として、相手の発話を一つ拾って短く返す。";
   const participantIds = [firstAiId, secondAiId].filter(Boolean);
   if (participantIds.length !== 2 || participantIds.some((aiId) => !findParticipantByAiId(state, aiId))) {
-    return controlResult("Usage: !collab loop start <ai_id> <ai_id> <turns> <topic>");
+    return controlResult("Usage: !collab loop start <ai_id> <ai_id> <turns|until_end> <topic>");
   }
 
   state.autoLoop = {
     enabled: true,
     participantIds,
-    remainingTurns: turns,
+    mode: loopPlan.mode,
+    remainingTurns: loopPlan.remainingTurns,
+    maxTurns: loopPlan.maxTurns,
+    completedTurns: 0,
     contextStartAfterMessageId: state.recentMessages.at(-1)?.id || null,
     topic
   };
@@ -433,8 +439,8 @@ function handleLoopCommand({ state, args }) {
   return issueTurn({
     state,
     aiId: firstAiId,
-    question: buildLoopQuestion({ aiId: firstAiId, topic, isFirst: true }),
-    reason: `auto loop start remaining=${turns}`
+    question: buildLoopQuestion({ aiId: firstAiId, topic, isFirst: true, autoLoop: state.autoLoop }),
+    reason: `auto loop start ${formatLoopProgress(state.autoLoop)}`
   });
 }
 
@@ -500,10 +506,26 @@ function maybeContinueLoop({ state, previousParticipant, previousMessageText, pr
   if (!state.autoLoop?.enabled) {
     return result;
   }
-  if (state.autoLoop.remainingTurns <= 1) {
+  state.autoLoop.completedTurns = (state.autoLoop.completedTurns || 0) + 1;
+
+  if (state.autoLoop.mode === "until_end" && hasCollabEndMarker(previousMessageText)) {
+    state.autoLoop = null;
+    result.controlMessages.push("Auto loop completed: participant marked conversation end.");
+    result.logMessages.push(`AUTO_LOOP_COMPLETED reason=end_marker ai=${previousParticipant.aiId}`);
+    return result;
+  }
+
+  if (state.autoLoop.mode === "bounded" && state.autoLoop.remainingTurns <= 1) {
     state.autoLoop = null;
     result.controlMessages.push("Auto loop completed.");
     result.logMessages.push("AUTO_LOOP_COMPLETED");
+    return result;
+  }
+
+  if (state.autoLoop.mode === "until_end" && state.autoLoop.completedTurns >= state.autoLoop.maxTurns) {
+    state.autoLoop = null;
+    result.controlMessages.push(`Auto loop stopped: until_end safety limit reached (${state.autoLoop.maxTurns} replies).`);
+    result.logMessages.push(`AUTO_LOOP_STOPPED reason=until_end_safety_limit max_turns=${state.autoLoop.maxTurns}`);
     return result;
   }
 
@@ -515,12 +537,14 @@ function maybeContinueLoop({ state, previousParticipant, previousMessageText, pr
     return result;
   }
 
-  state.autoLoop.remainingTurns -= 1;
+  if (state.autoLoop.mode === "bounded") {
+    state.autoLoop.remainingTurns -= 1;
+  }
   const pendingTurn = {
-    id: `auto-${Date.now()}-${state.autoLoop.remainingTurns}-${nextAiId}`,
+    id: `auto-${Date.now()}-${state.autoLoop.completedTurns}-${nextAiId}`,
     aiId: nextAiId,
-    question: buildLoopQuestion({ aiId: nextAiId, topic: state.autoLoop.topic, isFirst: false }),
-    reason: `auto loop remaining=${state.autoLoop.remainingTurns}`
+    question: buildLoopQuestion({ aiId: nextAiId, topic: state.autoLoop.topic, isFirst: false, autoLoop: state.autoLoop }),
+    reason: `auto loop ${formatLoopProgress(state.autoLoop)}`
   };
 
   const delayMs = estimateSpeechDelayMs(previousMessageText, state.speechPacing);
@@ -666,11 +690,41 @@ function nextLoopParticipantId(participantIds, currentAiId) {
   return participantIds[(index + 1) % participantIds.length];
 }
 
-function buildLoopQuestion({ aiId, topic, isFirst }) {
-  if (isFirst) {
-    return `${topic} 視聴者に短く挨拶し、相手が返しやすい軽い話題を一つ振ってください。`;
+function parseLoopPlan(rawValue) {
+  const value = String(rawValue || "").trim().toLowerCase();
+  if (["until_end", "until-end", "open", "forever"].includes(value)) {
+    return {
+      mode: "until_end",
+      remainingTurns: null,
+      maxTurns: AUTO_LOOP_UNTIL_END_MAX_TURNS
+    };
   }
-  return `${topic} まず相手の直前の質問や言葉に具体的に答えてください。その後、視聴者にもわかる軽い話題を一つだけ振ってください。`;
+  return {
+    mode: "bounded",
+    remainingTurns: Math.min(12, Math.max(1, Number.parseInt(value, 10) || 4)),
+    maxTurns: null
+  };
+}
+
+function formatLoopProgress(autoLoop) {
+  if (autoLoop?.mode === "until_end") {
+    return `mode=until_end completed=${autoLoop.completedTurns || 0} max=${autoLoop.maxTurns}`;
+  }
+  return `remaining=${autoLoop?.remainingTurns ?? "unknown"}`;
+}
+
+function hasCollabEndMarker(text) {
+  return String(text || "").includes(COLLAB_END_MARKER);
+}
+
+function buildLoopQuestion({ aiId, topic, isFirst, autoLoop }) {
+  const endInstruction = autoLoop?.mode === "until_end"
+    ? ` 会話が自然に一区切りした、またはこれ以上広げる必要がないと判断した場合だけ、返答の末尾に${COLLAB_END_MARKER}を付けてください。`
+    : "";
+  if (isFirst) {
+    return `${topic} 視聴者に短く挨拶し、相手が返しやすい軽い話題を一つ振ってください。${endInstruction}`;
+  }
+  return `${topic} まず相手の直前の質問や言葉に具体的に答えてください。その後、視聴者にもわかる軽い話題を一つだけ振ってください。${endInstruction}`;
 }
 
 function recentMessagesForTurn(state) {

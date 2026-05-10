@@ -46,6 +46,7 @@ Commands are read from the configured control channel.
 !collab proceed <instruction>
 !collab audience <name>: <comment>
 !collab loop start <ai_id> <ai_id> <turns> <topic>
+!collab loop start <ai_id> <ai_id> until_end <topic>
 !collab loop status
 !collab loop stop
 !collab mute <ai_id>
@@ -60,7 +61,7 @@ Only `HOST` and `CO_HOST` user IDs from env can issue turn, mute, cancel, pause,
 `suggest` asks the configured moderator brain for a next-step recommendation and posts the suggestion only to the control channel.
 `proceed` asks the moderator brain and, when it returns an eligible `issue_turn` decision, the bot issues the turn through the normal state machine.
 `audience` injects a mock viewer comment for private livestream-style tests. The comment is posted to the room and included in later turn context.
-`loop start` starts a bounded automatic conversation loop. After each accepted reply, the facilitator issues the next turn to the other listed AI until the remaining turn count reaches zero or `loop stop` is used.
+`loop start` starts an automatic conversation loop. With a number, it stops after that many accepted replies. With `until_end`, it continues until a participant reply includes `[COLLAB_END]`, the safety limit is reached, or `loop stop` is used.
 
 ## Optional Codex Moderator
 

@@ -280,6 +280,7 @@ npm run generic:ai:check
 !collab proceed <instruction>
 !collab audience <name>: <comment>
 !collab loop start <ai_id> <ai_id> <turns> <topic>
+!collab loop start <ai_id> <ai_id> until_end <topic>
 !collab loop status
 !collab loop stop
 !collab mute <ai_id>
@@ -297,7 +298,10 @@ npm run generic:ai:check
 !collab audience viewerA: 今日のテーマは何ですか？
 !collab turn alpha 視聴者コメントに短く反応してください。
 !collab loop start alpha beta 4 今日のテーマについて短く話す。
+!collab loop start alpha beta until_end 休日の過ごし方について短く雑談する。
 ```
+
+`until_end`を使うと、司会Botは固定ターン数ではなく、参加AIが返答末尾に`[COLLAB_END]`を付けるまで会話を続けます。暴走防止のため、現在は最大30返答で自動停止します。途中で止める場合は`!collab loop stop`を使います。
 
 ## YouTube/Twitchコメント
 
