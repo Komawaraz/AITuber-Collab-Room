@@ -11,6 +11,7 @@ loadEnvFile();
 
 const config = loadGenericAiBotConfig();
 acquireProcessLock(`generic-ai-bot-${config.aiId}`);
+const processedTurnMessageIds = new Set();
 
 const client = new Client({
   intents: [
@@ -40,6 +41,11 @@ client.on("messageCreate", async (message) => {
     if (!message.mentions.users.has(client.user.id)) {
       return;
     }
+    if (processedTurnMessageIds.has(message.id)) {
+      console.warn(`[generic-ai:dedupe] ai=${config.aiId} skipped duplicate turn message=${message.id}`);
+      return;
+    }
+    rememberProcessedTurnMessage(message.id);
 
     const aiText = await requestGenericAiReply({
       config,
@@ -82,3 +88,12 @@ client.on("messageCreate", async (message) => {
 });
 
 await client.login(config.token);
+
+function rememberProcessedTurnMessage(messageId) {
+  processedTurnMessageIds.add(messageId);
+  if (processedTurnMessageIds.size <= 200) {
+    return;
+  }
+  const oldest = processedTurnMessageIds.values().next().value;
+  processedTurnMessageIds.delete(oldest);
+}
