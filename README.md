@@ -91,6 +91,8 @@ Collab Roomの制御基盤そのものは軽量です。重いのはAI本体、T
 司会Bot + OBS + 主催者AI + 主催者AIのTTS:
   RAM 16GB以上
   GPU VRAM 16GB以上推奨
+  初期導入はNVIDIA GPU推奨
+  AMD GPUはROCm対応環境なら利用可能な場合あり
 
 外部参加者が自分のAIをWebhookで持ち込む場合:
   参加者AIの推論負荷は主催者側GPUには基本的に乗りません

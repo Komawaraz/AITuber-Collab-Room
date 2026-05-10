@@ -60,6 +60,27 @@ YouTube watcher:
   RTX 5090 32GB級
 ```
 
+AMD GPUはROCm対応のLinux環境なら利用可能な場合があります。ただし、ローカルLLM、TTS、音声変換、配信支援ツールはCUDA前提の実装や事例が多いため、初期導入ではNVIDIA GPUを推奨します。
+
+AMD GPUの目安:
+
+```text
+実験ライン:
+  Radeon RX 7900 XT 20GB
+
+実用候補:
+  Radeon RX 7900 XTX 24GB
+
+余裕候補:
+  Radeon PRO W7900 48GB
+```
+
+注意:
+
+- WindowsよりLinuxのほうが現実的です
+- 使用するLLM/TTS/音声変換ライブラリがROCm対応しているか事前確認してください
+- 同じVRAM容量でも、CUDA前提のツールではNVIDIAのほうが導入しやすい場合があります
+
 モデル規模の目安:
 
 ```text
